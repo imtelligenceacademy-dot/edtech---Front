@@ -331,7 +331,7 @@ export function PdfCanvasViewer({
             <>
               <FileWarning size={24} className="text-red-400" />
               <p className={light ? "text-sm text-slate-600" : "text-sm text-slate-300"}>
-                Couldn't load this lesson PDF.
+                Couldn&apos;t load this lesson PDF.
               </p>
             </>
           )}
@@ -339,7 +339,7 @@ export function PdfCanvasViewer({
           {nativeStatus === "ready" && nativeUrl && (
             <>
               <p className={light ? "max-w-sm text-sm text-slate-600" : "max-w-sm text-sm text-slate-300"}>
-                Open the lesson with your phone's PDF viewer.
+                Open the lesson with your phone&apos;s PDF viewer.
               </p>
               <a
                 href={nativeUrl}
