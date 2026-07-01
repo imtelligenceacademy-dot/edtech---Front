@@ -13,6 +13,7 @@ import {
   Sparkles,
   TrendingUp,
   AlertTriangle,
+  Database,
   Unlock,
   X,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { href: "/super-admin/lesson-access", label: "Lesson Unlock", icon: Unlock },
     { href: "/super-admin/reports", label: "Reports", icon: FileBarChart2 },
     { href: "/super-admin/security", label: "Security Logs", icon: ShieldCheck },
+    { href: "/super-admin/backup", label: "Backup", icon: Database },
   ],
   "school-admin": [
     { href: "/school-admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
