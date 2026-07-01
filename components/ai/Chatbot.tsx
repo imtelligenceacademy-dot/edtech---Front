@@ -150,6 +150,11 @@ function byLessonNo(a: Lesson, b: Lesson): number {
   return (a.lessonNo ?? 0) - (b.lessonNo ?? 0);
 }
 
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+}
+
 export function Chatbot() {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
@@ -319,8 +324,14 @@ export function Chatbot() {
     }
     setOpenedLesson(lesson);
     setOpenedSlide(1);
+    const mobilePdf = Boolean(lesson.fileId) && isMobileViewport();
+    if (mobilePdf) {
+      setFullscreenLesson(lesson);
+    }
     const detail = lesson.fileId
-      ? "The lesson PDF is open on the left — ask me anything about it here."
+      ? mobilePdf
+        ? "The lesson PDF is opening in the mobile viewer."
+        : "The lesson PDF is open on the left — ask me anything about it here."
       : `${lesson.slides.length} slides. The deck is open on the left; ask me anything about a slide and I'll explain it here.`;
     pushAssistant(`Opening "${lesson.title}" — Grade ${lesson.grade}. ${detail}`, {
       sourceRef: lesson.title,
