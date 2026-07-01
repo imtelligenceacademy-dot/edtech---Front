@@ -177,4 +177,5 @@ export interface Session {
   schoolId?: string;
   name: string;
   email: string;
+  accessToken?: string;
 }

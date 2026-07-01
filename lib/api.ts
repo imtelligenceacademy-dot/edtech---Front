@@ -20,6 +20,42 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 type RequestOptions = RequestInit & { skipRefresh?: boolean };
+const ACCESS_TOKEN_KEY = "imt_access_token";
+
+function getStoredAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+function storeAccessToken(token?: string | null) {
+  if (typeof window === "undefined" || !token) return;
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
+}
+
+function clearAccessToken() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+function withAuthHeaders(headers?: HeadersInit): Headers {
+  const merged = new Headers(headers);
+  const token = getStoredAccessToken();
+  if (token && !merged.has("Authorization")) {
+    merged.set("Authorization", `Bearer ${token}`);
+  }
+  return merged;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!refreshed.ok) return false;
+  const data = await parseResponse<{ accessToken?: string }>(refreshed);
+  storeAccessToken(data?.accessToken);
+  return true;
+}
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) return undefined as T;
@@ -32,6 +68,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
         : "Request failed. Please try again.";
     throw new Error(message);
   }
+  if (typeof data?.accessToken === "string") {
+    storeAccessToken(data.accessToken);
+  }
   return data as T;
 }
 
@@ -43,18 +82,14 @@ export async function apiFetch<T>(
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...requestOptions,
     credentials: "include",
-    headers: {
+    headers: withAuthHeaders({
       "Content-Type": "application/json",
       ...headers,
-    },
+    }),
   });
 
   if (response.status === 401 && !skipRefresh && path !== "/api/auth/refresh") {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) {
+    if (await refreshAccessToken()) {
       return apiFetch<T>(path, { ...options, skipRefresh: true });
     }
   }
@@ -66,13 +101,10 @@ export async function apiFetch<T>(
 export async function downloadDatabase(retried = false): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/admin/db/download`, {
     credentials: "include",
+    headers: withAuthHeaders(),
   });
   if (res.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return downloadDatabase(true);
+    if (await refreshAccessToken()) return downloadDatabase(true);
   }
   if (!res.ok) throw new Error("Could not generate the backup.");
 
@@ -108,14 +140,11 @@ export async function restoreDatabase(file: File, retried = false): Promise<{ me
   const res = await fetch(`${API_BASE_URL}/api/admin/db/restore`, {
     method: "POST",
     credentials: "include",
+    headers: withAuthHeaders(),
     body: form,
   });
   if (res.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return restoreDatabase(file, true);
+    if (await refreshAccessToken()) return restoreDatabase(file, true);
   }
   return parseResponse<{ message: string }>(res);
 }
@@ -132,11 +161,13 @@ export function homePathFor(role: Role): string {
 }
 
 export async function login(email: string, password: string): Promise<Session> {
-  return apiFetch<Session>("/api/auth/login", {
+  const session = await apiFetch<Session>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
     skipRefresh: true,
   });
+  storeAccessToken(session.accessToken);
+  return session;
 }
 
 export async function logout() {
@@ -144,6 +175,7 @@ export async function logout() {
     method: "POST",
     skipRefresh: true,
   }).catch(() => undefined);
+  clearAccessToken();
 }
 
 export function getSession() {
@@ -351,16 +383,12 @@ async function streamSSE(
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
 
   if (res.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return streamSSE(path, body, handlers, true);
+    if (await refreshAccessToken()) return streamSSE(path, body, handlers, true);
   }
   if (!res.ok || !res.body) {
     throw new Error("The AI assistant is unavailable right now.");
@@ -415,13 +443,10 @@ export async function downloadSchoolAIReport(retried = false): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/ai/admin/report`, {
     method: "POST",
     credentials: "include",
+    headers: withAuthHeaders(),
   });
   if (res.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return downloadSchoolAIReport(true);
+    if (await refreshAccessToken()) return downloadSchoolAIReport(true);
   }
   if (!res.ok) throw new Error("Could not generate the report.");
 
@@ -467,13 +492,12 @@ export async function downloadReport(
       ? "/api/reports/school/download"
       : `/api/reports/super/download${schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : ""}`;
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
+    headers: withAuthHeaders(),
+  });
   if (res.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return downloadReport(variant, schoolId, true);
+    if (await refreshAccessToken()) return downloadReport(variant, schoolId, true);
   }
   if (!res.ok) throw new Error("Could not generate the report.");
 
@@ -554,15 +578,12 @@ export async function uploadFile(
   const response = await fetch(`${API_BASE_URL}/api/files`, {
     method: "POST",
     credentials: "include",
+    headers: withAuthHeaders(),
     body: form,
   });
 
   if (response.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return uploadFile(file, language, true);
+    if (await refreshAccessToken()) return uploadFile(file, language, true);
   }
 
   return parseResponse<UploadResult>(response);
@@ -578,13 +599,12 @@ export async function fetchLessonPdf(
   fileId: string,
   retried = false
 ): Promise<ArrayBuffer> {
-  const res = await fetch(fileDownloadUrl(fileId), { credentials: "include" });
+  const res = await fetch(fileDownloadUrl(fileId), {
+    credentials: "include",
+    headers: withAuthHeaders(),
+  });
   if (res.status === 401 && !retried) {
-    const refreshed = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    if (refreshed.ok) return fetchLessonPdf(fileId, true);
+    if (await refreshAccessToken()) return fetchLessonPdf(fileId, true);
   }
   if (!res.ok) throw new Error("Could not load the lesson PDF.");
   return res.arrayBuffer();
