@@ -9,6 +9,11 @@ import { cn } from "@/lib/utils";
 // In-app PDF viewer (PDF.js → canvas): no browser toolbar (no download/print/
 // save), right-click + Ctrl+S/P blocked. Also tracks the slide the teacher has
 // scrolled to and lets them self-report progress ("Save progress" / "Complete").
+//
+// Mobile-hardened: pages fit the viewport width, the device-pixel-ratio is
+// capped, and only pages near the viewport are rendered to canvas (far pages
+// are freed). This keeps memory bounded so phones don't blank/crash on long
+// PDFs, while still never exposing a downloadable file.
 export function PdfCanvasViewer({
   fileId,
   lessonId,
@@ -26,16 +31,26 @@ export function PdfCanvasViewer({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
+  // Intrinsic page sizes (viewport at scale 1) so we can size placeholders and
+  // compute a fit-to-width scale without rendering every page.
+  const dimsRef = useRef<Array<{ width: number; height: number }>>([]);
+  const wrappersRef = useRef<HTMLDivElement[]>([]);
+  const renderedRef = useRef<Set<number>>(new Set());
   const ratiosRef = useRef<Map<number, number>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [scale, setScale] = useState(1.3);
+  // fitScale = base scale that makes a page fill the container width.
+  // zoom = user multiplier on top of that. Effective scale = fitScale * zoom.
+  const [fitScale, setFitScale] = useState(1);
+  const [zoom, setZoom] = useState(1);
   const [total, setTotal] = useState(0);
   const [current, setCurrent] = useState(1);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [done, setDone] = useState(accessStatus === "completed");
 
-  // Load the document.
+  const effScale = +(fitScale * zoom).toFixed(3);
+
+  // Load the document and pre-measure every page (light; no rendering).
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
@@ -48,6 +63,15 @@ export function PdfCanvasViewer({
         const doc = await pdfjs.getDocument({ data }).promise;
         if (cancelled) return;
         docRef.current = doc;
+        const dims: Array<{ width: number; height: number }> = [];
+        for (let n = 1; n <= doc.numPages; n++) {
+          const page = await doc.getPage(n);
+          if (cancelled) return;
+          const vp = page.getViewport({ scale: 1 });
+          dims[n] = { width: vp.width, height: vp.height };
+          page.cleanup();
+        }
+        dimsRef.current = dims;
         setTotal(doc.numPages);
         setStatus("ready");
       } catch {
@@ -61,7 +85,27 @@ export function PdfCanvasViewer({
     };
   }, [fileId]);
 
-  // (Re)render all pages; observe them to track the current slide.
+  // Compute the fit-to-width scale from the first page and the container width;
+  // recompute on resize / orientation change.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const container = containerRef.current;
+    const first = dimsRef.current[1];
+    if (!container || !first) return;
+
+    const recompute = () => {
+      const avail = container.clientWidth - 32; // px padding on each side
+      if (avail <= 0) return;
+      const s = Math.min(2, Math.max(0.4, avail / first.width));
+      setFitScale(+s.toFixed(3));
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [status]);
+
+  // Build page placeholders and lazily render only pages near the viewport.
   useEffect(() => {
     if (status !== "ready") return;
     const doc = docRef.current;
@@ -69,8 +113,58 @@ export function PdfCanvasViewer({
     if (!doc || !container) return;
 
     let cancelled = false;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    renderedRef.current.clear();
     ratiosRef.current.clear();
-    const observer = new IntersectionObserver(
+    wrappersRef.current = [];
+    container.innerHTML = "";
+
+    async function renderPage(n: number, wrapper: HTMLDivElement) {
+      if (cancelled || renderedRef.current.has(n)) return;
+      renderedRef.current.add(n);
+      try {
+        const page = await doc!.getPage(n);
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: effScale });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.className = "block rounded-lg shadow-2xl";
+        ctx.scale(dpr, dpr);
+        wrapper.innerHTML = "";
+        wrapper.appendChild(canvas);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (cancelled) canvas.remove();
+      } catch {
+        renderedRef.current.delete(n);
+      }
+    }
+
+    function freePage(n: number, wrapper: HTMLDivElement) {
+      if (!renderedRef.current.has(n)) return;
+      renderedRef.current.delete(n);
+      wrapper.innerHTML = "";
+    }
+
+    // Lazy render/free: keep a margin around the viewport so scrolling is smooth.
+    const lazy = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const el = e.target as HTMLDivElement;
+          const n = Number(el.dataset.slide);
+          if (e.isIntersecting) renderPage(n, el);
+          else freePage(n, el);
+        }
+      },
+      { root: container, rootMargin: "400px 0px" }
+    );
+
+    // Current-slide tracking: which page occupies the most of the viewport.
+    const track = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           const n = Number((e.target as HTMLElement).dataset.slide);
@@ -89,34 +183,27 @@ export function PdfCanvasViewer({
       { root: container, threshold: [0, 0.25, 0.5, 0.75, 1] }
     );
 
-    (async () => {
-      container.innerHTML = "";
-      const ratio = window.devicePixelRatio || 1;
-      for (let n = 1; n <= doc.numPages; n++) {
-        const page = await doc.getPage(n);
-        if (cancelled) return;
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        canvas.width = Math.floor(viewport.width * ratio);
-        canvas.height = Math.floor(viewport.height * ratio);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-        canvas.className = "mx-auto mb-4 rounded-lg shadow-2xl";
-        canvas.dataset.slide = String(n);
-        ctx.scale(ratio, ratio);
-        container.appendChild(canvas);
-        observer.observe(canvas);
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        if (cancelled) return;
-      }
-    })();
+    for (let n = 1; n <= doc.numPages; n++) {
+      const d = dimsRef.current[n];
+      if (!d) continue;
+      const wrapper = document.createElement("div");
+      wrapper.dataset.slide = String(n);
+      wrapper.className = "mx-auto mb-4";
+      wrapper.style.width = `${Math.floor(d.width * effScale)}px`;
+      wrapper.style.height = `${Math.floor(d.height * effScale)}px`;
+      wrapper.style.maxWidth = "100%";
+      container.appendChild(wrapper);
+      wrappersRef.current.push(wrapper);
+      lazy.observe(wrapper);
+      track.observe(wrapper);
+    }
+
     return () => {
       cancelled = true;
-      observer.disconnect();
+      lazy.disconnect();
+      track.disconnect();
     };
-  }, [status, scale]);
+  }, [status, effScale]);
 
   // Block save/print shortcuts while the viewer is mounted.
   useEffect(() => {
@@ -165,11 +252,11 @@ export function PdfCanvasViewer({
     <div className="relative flex h-full flex-col">
       {/* Zoom toolbar (no download/print/save) */}
       <div className={cn("flex items-center justify-center gap-2 border-b px-3 py-1.5 text-xs", light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-400")}>
-        <button className={barBtn} onClick={() => setScale((s) => Math.max(0.6, +(s - 0.15).toFixed(2)))} aria-label="Zoom out">
+        <button className={barBtn} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))} aria-label="Zoom out">
           <ZoomOut size={14} />
         </button>
-        <span className="w-12 text-center tabular-nums">{Math.round(scale * 100)}%</span>
-        <button className={barBtn} onClick={() => setScale((s) => Math.min(2.5, +(s + 0.15).toFixed(2)))} aria-label="Zoom in">
+        <span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+        <button className={barBtn} onClick={() => setZoom((z) => Math.min(3, +(z + 0.15).toFixed(2)))} aria-label="Zoom in">
           <ZoomIn size={14} />
         </button>
       </div>
