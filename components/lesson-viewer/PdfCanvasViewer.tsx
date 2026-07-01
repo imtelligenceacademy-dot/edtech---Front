@@ -59,6 +59,7 @@ export function PdfCanvasViewer({
   const [useNativeMobileViewer, setUseNativeMobileViewer] = useState(false);
   const [nativeUrl, setNativeUrl] = useState<string | null>(null);
   const [nativeStatus, setNativeStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [errorMessage, setErrorMessage] = useState("Could not load this lesson PDF.");
 
   const effScale = +(fitScale * zoom).toFixed(3);
 
@@ -91,8 +92,11 @@ export function PdfCanvasViewer({
         url = URL.createObjectURL(blob);
         setNativeUrl(url);
         setNativeStatus("ready");
-      } catch {
-        if (!cancelled) setNativeStatus("error");
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMessage(err instanceof Error ? err.message : "Could not load this lesson PDF.");
+          setNativeStatus("error");
+        }
       }
     })();
     return () => {
@@ -126,8 +130,11 @@ export function PdfCanvasViewer({
         dimsRef.current = dims;
         setTotal(doc.numPages);
         setStatus("ready");
-      } catch {
-        if (!cancelled) setStatus("error");
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMessage(err instanceof Error ? err.message : "Could not load this lesson PDF.");
+          setStatus("error");
+        }
       }
     })();
     return () => {
@@ -331,7 +338,9 @@ export function PdfCanvasViewer({
             <>
               <FileWarning size={24} className="text-red-400" />
               <p className={light ? "text-sm text-slate-600" : "text-sm text-slate-300"}>
-                Couldn&apos;t load this lesson PDF.
+                {errorMessage === "Stored file missing"
+                  ? "This lesson file is missing from storage. Please ask a super admin to re-upload the PDF."
+                  : errorMessage}
               </p>
             </>
           )}
@@ -453,7 +462,11 @@ export function PdfCanvasViewer({
           ) : (
             <>
               <FileWarning size={22} className="text-red-400" />
-              <span className={light ? "text-slate-600" : "text-slate-300"}>Couldn&apos;t load this lesson PDF.</span>
+              <span className={light ? "text-slate-600" : "text-slate-300"}>
+                {errorMessage === "Stored file missing"
+                  ? "This lesson file is missing from storage. Please ask a super admin to re-upload the PDF."
+                  : errorMessage}
+              </span>
             </>
           )}
         </div>

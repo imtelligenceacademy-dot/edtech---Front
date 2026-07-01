@@ -606,7 +606,16 @@ export async function fetchLessonPdf(
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return fetchLessonPdf(fileId, true);
   }
-  if (!res.ok) throw new Error("Could not load the lesson PDF.");
+  if (!res.ok) {
+    let detail = "Could not load the lesson PDF.";
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string") detail = data.detail;
+    } catch {
+      // Keep the generic message when the server did not send JSON.
+    }
+    throw new Error(detail);
+  }
   return res.arrayBuffer();
 }
 
