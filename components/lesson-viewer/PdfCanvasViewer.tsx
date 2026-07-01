@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ZoomIn, ZoomOut, Loader2, FileWarning, Check, BookmarkCheck, ArrowLeft } from "lucide-react";
+import {
+  ZoomIn,
+  ZoomOut,
+  Loader2,
+  FileWarning,
+  Check,
+  BookmarkCheck,
+  ArrowLeft,
+  ExternalLink,
+} from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { fetchLessonPdf, saveLessonProgress } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -47,11 +56,54 @@ export function PdfCanvasViewer({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [done, setDone] = useState(accessStatus === "completed");
+  const [useNativeMobileViewer, setUseNativeMobileViewer] = useState(false);
+  const [nativeUrl, setNativeUrl] = useState<string | null>(null);
+  const [nativeStatus, setNativeStatus] = useState<"loading" | "ready" | "error">("loading");
 
   const effScale = +(fitScale * zoom).toFixed(3);
 
+  useEffect(() => {
+    const detect = () => {
+      setUseNativeMobileViewer(
+        window.matchMedia("(max-width: 768px), (pointer: coarse)").matches
+      );
+    };
+    detect();
+    window.addEventListener("resize", detect);
+    window.addEventListener("orientationchange", detect);
+    return () => {
+      window.removeEventListener("resize", detect);
+      window.removeEventListener("orientationchange", detect);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!useNativeMobileViewer) return;
+    let cancelled = false;
+    let url: string | null = null;
+    setNativeStatus("loading");
+    setNativeUrl(null);
+    (async () => {
+      try {
+        const data = await fetchLessonPdf(fileId);
+        if (cancelled) return;
+        const blob = new Blob([data], { type: "application/pdf" });
+        url = URL.createObjectURL(blob);
+        setNativeUrl(url);
+        setNativeStatus("ready");
+      } catch {
+        if (!cancelled) setNativeStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [fileId, useNativeMobileViewer]);
+
   // Load the document and pre-measure every page (light; no rendering).
   useEffect(() => {
+    if (useNativeMobileViewer) return;
     let cancelled = false;
     setStatus("loading");
     (async () => {
@@ -83,11 +135,12 @@ export function PdfCanvasViewer({
       docRef.current?.destroy?.();
       docRef.current = null;
     };
-  }, [fileId]);
+  }, [fileId, useNativeMobileViewer]);
 
   // Compute the fit-to-width scale from the first page and the container width;
   // recompute on resize / orientation change.
   useEffect(() => {
+    if (useNativeMobileViewer) return;
     if (status !== "ready") return;
     const container = containerRef.current;
     const first = dimsRef.current[1];
@@ -103,10 +156,11 @@ export function PdfCanvasViewer({
     const ro = new ResizeObserver(recompute);
     ro.observe(container);
     return () => ro.disconnect();
-  }, [status]);
+  }, [status, useNativeMobileViewer]);
 
   // Build page placeholders and lazily render only pages near the viewport.
   useEffect(() => {
+    if (useNativeMobileViewer) return;
     if (status !== "ready") return;
     const doc = docRef.current;
     const container = containerRef.current;
@@ -203,7 +257,7 @@ export function PdfCanvasViewer({
       lazy.disconnect();
       track.disconnect();
     };
-  }, [status, effScale]);
+  }, [status, effScale, useNativeMobileViewer]);
 
   // Block save/print shortcuts while the viewer is mounted.
   useEffect(() => {
@@ -247,6 +301,79 @@ export function PdfCanvasViewer({
     "flex h-7 w-7 items-center justify-center rounded-md transition",
     light ? "text-slate-600 hover:bg-slate-100" : "text-slate-300 hover:bg-white/10"
   );
+
+  if (useNativeMobileViewer) {
+    return (
+      <div className="relative flex h-full flex-col">
+        <div className={cn("flex items-center justify-between gap-2 border-b px-3 py-2 text-xs", light ? "border-slate-200/60 text-slate-600" : "border-white/5 text-slate-300")}>
+          <span>Mobile PDF viewer</span>
+          {onExit && (
+            <button
+              onClick={onExit}
+              className={cn("inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition", light ? "border-slate-200 bg-white text-slate-700" : "border-white/10 bg-white/5 text-slate-200")}
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5 text-center">
+          {nativeStatus === "loading" && (
+            <>
+              <Loader2 size={24} className={cn("animate-spin", light ? "text-slate-400" : "text-slate-500")} />
+              <p className={light ? "text-sm text-slate-600" : "text-sm text-slate-300"}>
+                Preparing the lesson PDF...
+              </p>
+            </>
+          )}
+
+          {nativeStatus === "error" && (
+            <>
+              <FileWarning size={24} className="text-red-400" />
+              <p className={light ? "text-sm text-slate-600" : "text-sm text-slate-300"}>
+                Couldn't load this lesson PDF.
+              </p>
+            </>
+          )}
+
+          {nativeStatus === "ready" && nativeUrl && (
+            <>
+              <p className={light ? "max-w-sm text-sm text-slate-600" : "max-w-sm text-sm text-slate-300"}>
+                Open the lesson with your phone's PDF viewer.
+              </p>
+              <a
+                href={nativeUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
+              >
+                <ExternalLink size={16} /> Open PDF
+              </a>
+              {lessonId && !done && (
+                <button
+                  onClick={() => save(true)}
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <Check size={15} /> {saving ? "Saving..." : "Mark complete"}
+                </button>
+              )}
+              {done && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+                  <BookmarkCheck size={13} /> Lesson completed
+                </span>
+              )}
+              {saved && (
+                <span className={cn("text-xs", saved.startsWith("Couldn't") ? "text-red-500" : "text-emerald-600")}>
+                  {saved}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-full flex-col">
