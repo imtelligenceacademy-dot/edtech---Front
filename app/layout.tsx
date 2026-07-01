@@ -4,6 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "IM-Telligence",
   description: "Teacher management and AI-assisted teaching platform.",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
