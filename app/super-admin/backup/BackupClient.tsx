@@ -138,7 +138,7 @@ export function BackupClient() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Download */}
         <Card>
-          <CardHeader title="Download backup" subtitle="A single .db SQLite file." />
+          <CardHeader title="Download backup" subtitle="A single database backup file." />
           <CardBody>
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
@@ -152,7 +152,7 @@ export function BackupClient() {
             <div className="mt-4">
               <Button onClick={handleDownload} disabled={downloading}>
                 {downloading ? <Loader2 size={14} className="animate-spin" /> : <DownloadCloud size={14} />}
-                {downloading ? "Preparing…" : "Download .db backup"}
+                {downloading ? "Preparing…" : "Download backup"}
               </Button>
             </div>
           </CardBody>
@@ -160,7 +160,7 @@ export function BackupClient() {
 
         {/* Email */}
         <Card>
-          <CardHeader title="Email backup" subtitle="Send the .db to one or more people." />
+          <CardHeader title="Email backup" subtitle="Send the backup file to one or more people." />
           <CardBody>
             <label className="block text-xs font-medium text-slate-700">
               Recipients
@@ -239,12 +239,12 @@ export function BackupClient() {
             <div className="rounded-lg border border-red-100 bg-red-50/50 p-4">
               <p className="text-sm font-medium text-slate-900">Insert (restore) database</p>
               <p className="mt-1 text-xs text-slate-600">
-                Replace ALL current data with the contents of a backup .db file.
+                Replace ALL current data with the contents of an IM-Telligence backup file.
               </p>
               <input
                 ref={restoreInputRef}
                 type="file"
-                accept=".db"
+                accept=".json,.db"
                 className="sr-only"
                 onChange={(e) => {
                   setRestoreFile(e.target.files?.[0] ?? null);
@@ -253,7 +253,7 @@ export function BackupClient() {
               />
               <div className="mt-3 flex items-center gap-2">
                 <Button variant="secondary" onClick={() => restoreInputRef.current?.click()}>
-                  <Upload size={14} /> Choose .db
+                  <Upload size={14} /> Choose backup
                 </Button>
                 {restoreFile && (
                   <span className="truncate text-xs text-slate-600">{restoreFile.name}</span>

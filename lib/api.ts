@@ -78,7 +78,7 @@ export async function downloadDatabase(retried = false): Promise<void> {
 
   const cd = res.headers.get("Content-Disposition") ?? "";
   const m = cd.match(/filename\*=UTF-8''([^;]+)/);
-  const filename = m ? decodeURIComponent(m[1]) : "im-telligence-backup.db";
+  const filename = m ? decodeURIComponent(m[1]) : "im-telligence-backup";
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
