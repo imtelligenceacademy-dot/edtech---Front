@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { homePathFor, login } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 
@@ -9,6 +10,7 @@ export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -41,14 +43,24 @@ export function LoginForm() {
       </div>
       <div>
         <label className="text-xs font-medium text-slate-700">Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-          className="mt-1 w-full h-10 rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-          required
-        />
+        <div className="relative">
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className="mt-1 w-full h-10 rounded-lg border border-slate-300 pl-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            required
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 rounded p-1 text-slate-400 transition hover:text-slate-600"
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading}>

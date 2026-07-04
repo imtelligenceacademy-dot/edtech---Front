@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Plus, X, Ban, Pencil, Trash2, ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Check, Plus, X, Ban, Pencil, Trash2, ArrowLeft, ArrowRight, Eye, EyeOff, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -67,6 +67,9 @@ export default function AccountsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [filter, setFilter] = useState<"all" | "pending" | "active" | "suspended">("all");
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | User["role"]>("all");
+  const [schoolFilter, setSchoolFilter] = useState<"all" | string>("all");
   const [loading, setLoading] = useState(true);
 
   // null = closed, "new" = create, User = edit that user.
@@ -188,7 +191,15 @@ export default function AccountsPage() {
     }
   }
 
-  const filtered = users.filter((u) => (filter === "all" ? true : u.status === filter));
+  const q = search.trim().toLowerCase();
+  const filtered = users.filter((u) => {
+    if (filter !== "all" && u.status !== filter) return false;
+    if (roleFilter !== "all" && u.role !== roleFilter) return false;
+    if (schoolFilter !== "all" && (u.schoolId ?? "") !== schoolFilter) return false;
+    if (q && !(`${u.name} ${u.email}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const facetsActive = q !== "" || roleFilter !== "all" || schoolFilter !== "all";
 
   const tabs: { key: typeof filter; label: string; count: number }[] = [
     { key: "all", label: "All", count: users.length },
@@ -221,19 +232,83 @@ export default function AccountsPage() {
         }
       />
 
-      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 mb-4 text-xs">
-        {tabs.map((t) => (
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setFilter(t.key)}
+              className={cn(
+                "px-3 py-1.5 rounded-md font-medium",
+                filter === t.key ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+              )}
+            >
+              {t.label} <span className="opacity-60">· {t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Search by name / email */}
+        <div className="relative">
+          <Search
+            size={15}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or email…"
+            className="h-9 w-56 rounded-lg border border-slate-300 bg-white pl-9 pr-8 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Role filter */}
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
+          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="all">All roles</option>
+          <option value="super-admin">Super Admin</option>
+          <option value="school-admin">School Admin</option>
+          <option value="teacher">Teacher</option>
+        </select>
+
+        {/* School filter */}
+        <select
+          value={schoolFilter}
+          onChange={(e) => setSchoolFilter(e.target.value)}
+          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="all">All schools</option>
+          {schools.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+
+        {facetsActive && (
           <button
-            key={t.key}
-            onClick={() => setFilter(t.key)}
-            className={cn(
-              "px-3 py-1.5 rounded-md font-medium",
-              filter === t.key ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
-            )}
+            onClick={() => {
+              setSearch("");
+              setRoleFilter("all");
+              setSchoolFilter("all");
+            }}
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-brand-700"
           >
-            {t.label} <span className="opacity-60">· {t.count}</span>
+            <X size={12} /> Clear
           </button>
-        ))}
+        )}
       </div>
 
       <Card>
@@ -250,6 +325,13 @@ export default function AccountsPage() {
             </TR>
           </THead>
           <tbody>
+            {filtered.length === 0 && (
+              <TR>
+                <TD className="py-8 text-center text-sm text-slate-500">
+                  No users match these filters.
+                </TD>
+              </TR>
+            )}
             {filtered.map((u) => {
               const school = schools.find((s) => s.id === u.schoolId);
               return (

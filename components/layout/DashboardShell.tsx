@@ -32,7 +32,9 @@ export function DashboardShell({
         setChecked(true);
       })
       .catch(() => {
-        if (alive) router.replace("/");
+        if (!alive) return;
+        setChecked(true);
+        router.replace("/");
       });
     return () => {
       alive = false;

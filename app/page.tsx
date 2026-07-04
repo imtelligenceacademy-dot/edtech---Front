@@ -1,4 +1,5 @@
 import { LoginForm } from "@/components/auth/LoginForm";
+import { RobotHero } from "@/components/auth/RobotHero";
 
 export default function LandingPage() {
   return (
@@ -15,17 +16,14 @@ export default function LandingPage() {
             <span className="font-semibold">IM-Telligence</span>
           </div>
         </div>
-        <div className="relative z-10 max-w-md">
-          <p className="text-[11px] uppercase tracking-widest text-brand-300 mb-3">
+        <div className="relative z-10 flex flex-col items-center text-center">
+          <RobotHero />
+          <p className="mt-6 text-[11px] uppercase tracking-widest text-brand-300">
             Teacher platform
           </p>
-          <h1 className="text-3xl font-semibold leading-tight">
+          <h1 className="mt-2 max-w-md text-2xl font-semibold leading-tight">
             Assigned lessons, AI assistance, and progress in one place.
           </h1>
-          <p className="mt-4 text-slate-300 text-sm leading-relaxed">
-            Built for K-12 STEAM classrooms. Super Admin distributes lessons,
-            school admins monitor progress, teachers focus on teaching.
-          </p>
         </div>
         <div className="relative z-10 text-xs text-slate-500">
           © {new Date().getFullYear()} IM-Telligence

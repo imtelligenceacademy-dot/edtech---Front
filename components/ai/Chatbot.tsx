@@ -542,7 +542,7 @@ export function Chatbot() {
       )}
 
       {/* Chat column */}
-      <div className="relative z-10 flex h-full min-w-0 flex-1 flex-col">
+      <div className="relative z-10 flex h-full min-h-0 min-w-0 flex-1 flex-col">
         {/* Header — relative z-30 lifts it (and its dropdown menus) above the
             chat messages below, which otherwise paint over the dropdowns. */}
         <div
@@ -551,11 +551,11 @@ export function Chatbot() {
             light ? "border-slate-200/60 bg-white/70" : "border-white/5 bg-slate-950/40"
           )}
         >
-          <div className="relative">
+          <div className="relative shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 p-[2px] shadow-lg shadow-brand/30">
             <img
               src="/logo.png"
               alt="IM-Telligence"
-              className="h-9 w-9 rounded-full bg-white object-contain p-0.5 shadow-lg shadow-brand/30"
+              className="h-9 w-9 rounded-full bg-white object-contain p-0.5"
             />
             <div
               className={cn(
@@ -567,7 +567,7 @@ export function Chatbot() {
           <div className="min-w-0 flex-1">
             <p
               className={cn(
-                "truncate text-sm font-semibold",
+                "truncate text-sm font-semibold tracking-tight",
                 light ? "text-slate-900" : "text-white"
               )}
             >
@@ -575,11 +575,12 @@ export function Chatbot() {
             </p>
             <p
               className={cn(
-                "hidden truncate text-[11px] lg:block",
+                "hidden items-center gap-1.5 truncate text-[11px] sm:flex",
                 light ? "text-slate-500" : "text-slate-400"
               )}
             >
-              Lesson copilot · opens lessons and answers questions
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              Online · Lesson copilot
             </p>
           </div>
           {(selectedGrade !== null || messages.length > 0) && (
@@ -587,22 +588,14 @@ export function Chatbot() {
               onClick={resetSession}
               title="Start a new session"
               className={cn(
-                "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition",
+                "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
                 light
-                  ? "border-slate-200 bg-white/70 text-slate-700 hover:bg-white"
-                  : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                  ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
+                  : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
               )}
             >
               <Plus size={13} /> <span className="hidden sm:inline">New chat</span>
             </button>
-          )}
-          {selectedGrade !== null && (
-            <GradeMenu
-              grade={selectedGrade}
-              grades={availableGrades}
-              onChange={chooseGrade}
-              light={light}
-            />
           )}
           <UserMenu session={session} light={light} />
         </div>
@@ -610,7 +603,7 @@ export function Chatbot() {
         {/* Required first step: pick a grade, then the chat / welcome */}
         <div
           ref={scrollRef}
-          className="chat-scroll flex-1 overflow-y-auto px-4 py-6 sm:px-8"
+          className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
         >
           {selectedGrade === null ? (
             <GradeGate
@@ -753,7 +746,7 @@ export function Chatbot() {
             {report.length}
           </span>
         </div>
-        <div className="chat-scroll flex-1 space-y-2 overflow-y-auto px-4 py-4">
+        <div className="chat-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
           {report.length === 0 ? (
             <p className={cn("px-1 text-xs", light ? "text-slate-500" : "text-slate-500")}>
               Each lesson action and Q&A will appear here, in real time.
@@ -878,87 +871,6 @@ function GradeGate({
   );
 }
 
-// Header control to switch the active grade without leaving the conversation.
-function GradeMenu({
-  grade,
-  grades,
-  onChange,
-  light,
-}: {
-  grade: number;
-  grades: number[];
-  onChange: (grade: number) => void;
-  light: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
-  const single = grades.length <= 1;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => !single && setOpen((v) => !v)}
-        className={cn(
-          "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition",
-          light
-            ? "border-slate-200 bg-white/70 text-slate-700 hover:bg-white"
-            : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10",
-          single && "cursor-default"
-        )}
-      >
-        <GraduationCap size={12} className={light ? "text-brand-600" : "text-brand-300"} />
-        Grade {grade}
-        {!single && (
-          <ChevronDown
-            size={12}
-            className={cn("transition", open && "rotate-180")}
-          />
-        )}
-      </button>
-      {open && !single && (
-        <div
-          className={cn(
-            "absolute right-0 top-[calc(100%+6px)] z-50 w-32 overflow-hidden rounded-xl border shadow-2xl",
-            light ? "border-slate-200 bg-white" : "border-white/10 bg-slate-900"
-          )}
-        >
-          {grades.map((g) => (
-            <button
-              key={g}
-              onClick={() => {
-                onChange(g);
-                setOpen(false);
-              }}
-              className={cn(
-                "flex w-full items-center justify-between px-3 py-2 text-left text-sm transition",
-                g === grade
-                  ? light
-                    ? "bg-slate-100 text-slate-900"
-                    : "bg-white/10 text-white"
-                  : light
-                  ? "text-slate-700 hover:bg-slate-50"
-                  : "text-slate-200 hover:bg-white/5"
-              )}
-            >
-              Grade {g}
-              {g === grade && <CheckCircle2 size={13} className="text-brand-500" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function WelcomeScreen({
   lessons,
   grade,
@@ -975,7 +887,7 @@ function WelcomeScreen({
   light: boolean;
 }) {
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
+    <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center py-6 text-center sm:py-10">
       <img
         src="/logo.png"
         alt="IM-Telligence"
