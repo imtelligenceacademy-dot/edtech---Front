@@ -98,6 +98,12 @@ export async function apiFetch<T>(
 }
 
 // --- Database backup (super-admin) ----------------------------------------- #
+async function inferBackupFilename(blob: Blob): Promise<string> {
+  const prefix = await blob.slice(0, 32).text();
+  const ext = prefix.startsWith("SQLite format 3") ? "db" : "json";
+  return `im-telligence-backup.${ext}`;
+}
+
 export async function downloadDatabase(retried = false): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/admin/db/download`, {
     credentials: "include",
@@ -110,9 +116,8 @@ export async function downloadDatabase(retried = false): Promise<void> {
 
   const cd = res.headers.get("Content-Disposition") ?? "";
   const m = cd.match(/filename\*=UTF-8''([^;]+)/);
-  const filename = m ? decodeURIComponent(m[1]) : "im-telligence-backup";
-
   const blob = await res.blob();
+  const filename = m ? decodeURIComponent(m[1]) : await inferBackupFilename(blob);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

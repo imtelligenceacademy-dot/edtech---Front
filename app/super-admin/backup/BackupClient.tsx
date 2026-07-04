@@ -239,12 +239,12 @@ export function BackupClient() {
             <div className="rounded-lg border border-red-100 bg-red-50/50 p-4">
               <p className="text-sm font-medium text-slate-900">Insert (restore) database</p>
               <p className="mt-1 text-xs text-slate-600">
-                Replace ALL current data with the contents of an IM-Telligence backup file.
+                Replace ALL current data with the contents of an IM-Telligence backup file
+                (.json, .db, or an older extensionless backup).
               </p>
               <input
                 ref={restoreInputRef}
                 type="file"
-                accept=".json,.db"
                 className="sr-only"
                 onChange={(e) => {
                   setRestoreFile(e.target.files?.[0] ?? null);
