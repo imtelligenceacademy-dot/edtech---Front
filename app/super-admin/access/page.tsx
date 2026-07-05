@@ -84,6 +84,13 @@ export default function AccessControlPage() {
     selected.length !== persistedInSchool.length ||
     selected.some((id) => !persistedInSchool.includes(id));
 
+  function confirmDiscardUnsaved(): boolean {
+    return (
+      !dirty ||
+      window.confirm("You have unsaved teacher assignment changes. Discard them?")
+    );
+  }
+
   function toggle(id: string) {
     setSaved(false);
     setError(null);
@@ -305,6 +312,7 @@ export default function AccessControlPage() {
                           <button
                             key={l.id}
                             onClick={() => {
+                              if (l.id === lessonId || !confirmDiscardUnsaved()) return;
                               setLessonId(l.id);
                               setSaved(false);
                               setError(null);
@@ -339,6 +347,7 @@ export default function AccessControlPage() {
               <button
                 key={s.id}
                 onClick={() => {
+                  if (s.id === schoolId || !confirmDiscardUnsaved()) return;
                   setSchoolId(s.id);
                   setSaved(false);
                   setError(null);
