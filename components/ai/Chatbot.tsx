@@ -145,6 +145,13 @@ const NEXT_LESSON_INTENT = /\bnext (?:lesson|one)\b|\b(?:open|start|go to|load)\
 // "open my lesson" / "reopen this lesson" -> open the current/available lesson.
 const OPEN_LESSON_INTENT = /\breopen\b|\b(?:open|start|resume|continue|load|go to)\b[^.?!]*\blesson\b/i;
 
+function hasNamedLessonOpenIntent(text: string): boolean {
+  return (
+    /\b(?:open|load|go to)\b/i.test(text) ||
+    /\b(?:start|resume|continue)\b(?!\s+by\b)[^.?!]*(?:\blesson\b|\bgrade\s*\d{1,2}\b)/i.test(text)
+  );
+}
+
 // Order lessons by their curriculum number for sequential navigation.
 function byLessonNo(a: Lesson, b: Lesson): number {
   return (a.lessonNo ?? 0) - (b.lessonNo ?? 0);
@@ -430,10 +437,12 @@ export function Chatbot() {
       openNextLesson();
       return;
     }
-    const named = findLessonByText(text, gradeLessons);
-    if (named) {
-      openLesson(named);
-      return;
+    if (hasNamedLessonOpenIntent(text)) {
+      const named = findLessonByText(text, gradeLessons);
+      if (named) {
+        openLesson(named);
+        return;
+      }
     }
     if (OPEN_LESSON_INTENT.test(text)) {
       openCurrentLesson();
