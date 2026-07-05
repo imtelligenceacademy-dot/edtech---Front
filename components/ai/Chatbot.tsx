@@ -141,7 +141,8 @@ function lessonLockMessage(lesson: Lesson): string {
 const COMPLETE_INTENT =
   /\b(i(?:'ve| have)?\s*(?:just\s*)?(?:finished|done|completed)|(?:finished|completed|done with)\s+(?:the|this|my)\s+(?:lesson|pdf|presentation|deck)|mark(?:\s+(?:it|this|the\s+(?:lesson|pdf|presentation)))?\s+(?:as\s+)?complete|mark complete)\b/i;
 // "open/start the next lesson" -> advance to the next lesson in the track.
-const NEXT_LESSON_INTENT = /\bnext (?:lesson|one)\b|\b(?:open|start|go to|load)\b[^.?!]*\bnext\b/i;
+const NEXT_LESSON_INTENT =
+  /\b(?:(?:open|start|go to|load|continue)\s+)?(?:the\s+)?next\s+(?:lesson|one)\b/i;
 // "open my lesson" / "reopen this lesson" -> open the current/available lesson.
 const OPEN_LESSON_INTENT = /\breopen\b|\b(?:open|start|resume|continue|load|go to)\b[^.?!]*\blesson\b/i;
 
