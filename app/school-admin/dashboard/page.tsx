@@ -4,25 +4,22 @@ import { useEffect, useState } from "react";
 import { Users, AlertTriangle, BookOpen, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { WatchdogBadge } from "@/components/watchdog/WatchdogBadge";
 import {
   getAIUsage,
   listLessons,
   listProgress,
   listSchools,
-  listSecurityLogs,
   listUsers,
   type AIUsageStats,
 } from "@/lib/api";
-import type { Lesson, ProgressEntry, School, SecurityLog, User } from "@/types";
+import type { Lesson, ProgressEntry, School, User } from "@/types";
 
 export default function SchoolAdminDashboard() {
   const [schools, setSchools] = useState<School[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [progress, setProgress] = useState<ProgressEntry[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [securityLogs, setSecurityLogs] = useState<SecurityLog[]>([]);
   const [aiUsage, setAiUsage] = useState<AIUsageStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,15 +29,13 @@ export default function SchoolAdminDashboard() {
       listUsers(),
       listProgress(),
       listLessons(),
-      listSecurityLogs(),
       getAIUsage().catch(() => null),
     ])
-      .then(([schoolRows, userRows, progressRows, lessonRows, logRows, usage]) => {
+      .then(([schoolRows, userRows, progressRows, lessonRows, usage]) => {
         setSchools(schoolRows);
         setTeachers(userRows.filter((u) => u.role === "teacher"));
         setProgress(progressRows);
         setLessons(lessonRows);
-        setSecurityLogs(logRows);
         setAiUsage(usage);
       })
       .finally(() => setLoading(false));
@@ -54,8 +49,6 @@ export default function SchoolAdminDashboard() {
     progress.length === 0
       ? 0
       : Math.round(progress.reduce((acc, p) => acc + p.percentComplete, 0) / progress.length);
-  const securityForSchool = securityLogs.filter((l) => l.status !== "ok");
-
   const aiDelta =
     aiUsage && aiUsage.deltaPct !== null
       ? `${aiUsage.deltaPct >= 0 ? "+" : ""}${aiUsage.deltaPct}% vs prev. week`
@@ -129,9 +122,9 @@ export default function SchoolAdminDashboard() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="space-y-6">
         {/* Teacher progress — grouped by grade */}
-        <div className="space-y-6 xl:col-span-2">
+        <div className="space-y-6">
           <div>
             <p className="text-sm font-semibold text-slate-900">Teacher progress</p>
             <p className="text-xs text-slate-500">Grouped by grade · across all assigned lessons</p>
@@ -187,26 +180,6 @@ export default function SchoolAdminDashboard() {
           ))}
         </div>
 
-        {/* Security alerts */}
-        <Card className="self-start overflow-hidden p-0">
-          <CardHeader title="Security alerts" subtitle="For this school" />
-          <CardBody className="space-y-3">
-            {securityForSchool.length === 0 && (
-              <p className="text-sm text-slate-500">No alerts in the last 7 days.</p>
-            )}
-            {securityForSchool.map((l) => (
-              <div key={l.id} className="rounded-lg border border-slate-100 p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-slate-900">{l.userName}</span>
-                  <Badge tone={l.status === "blocked" ? "danger" : "warning"}>{l.status}</Badge>
-                </div>
-                <p className="mt-1 text-xs capitalize text-slate-500">
-                  {l.event.replace(/-/g, " ")} - {l.location.label}
-                </p>
-              </div>
-            ))}
-          </CardBody>
-        </Card>
       </div>
     </>
   );

@@ -12,7 +12,6 @@ import {
   KeyRound,
   Sparkles,
   TrendingUp,
-  AlertTriangle,
   Database,
   Unlock,
   X,
@@ -39,7 +38,6 @@ const navByRole: Record<Role, NavItem[]> = {
     { href: "/school-admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/school-admin/ai", label: "AI Assistant", icon: Sparkles },
     { href: "/school-admin/reports", label: "Reports", icon: FileBarChart2 },
-    { href: "/school-admin/security", label: "Security Alerts", icon: AlertTriangle },
   ],
   teacher: [
     { href: "/teacher/ai", label: "AI Assistant", icon: Sparkles },
