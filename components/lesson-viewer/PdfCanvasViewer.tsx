@@ -113,10 +113,9 @@ export function PdfCanvasViewer({
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
         const data = await fetchLessonPdf(fileId);
         if (cancelled) return;
-        const doc = await pdfjs.getDocument({ data }).promise;
+        const doc = await pdfjs.getDocument({ data, disableWorker: true } as any).promise;
         if (cancelled) return;
         docRef.current = doc;
         const dims: Array<{ width: number; height: number }> = [];

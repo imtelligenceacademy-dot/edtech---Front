@@ -153,9 +153,46 @@ function hasNamedLessonOpenIntent(text: string): boolean {
   );
 }
 
-// Order lessons by their curriculum number for sequential navigation.
+// Relative order of courses within a grade/language track — mirrors the
+// backend COURSE_ORDER so the whole track reads as one linear sequence
+// (all python lessons, then all micro:bit lessons).
+const COURSE_ORDER: Record<string, number> = { python: 1, microbit: 2 };
+function courseOrder(l: Lesson): number {
+  return COURSE_ORDER[l.course ?? ""] ?? 0;
+}
+
+// Order lessons by course first, then curriculum number, for sequential nav.
 function byLessonNo(a: Lesson, b: Lesson): number {
-  return (a.lessonNo ?? 0) - (b.lessonNo ?? 0);
+  return (
+    courseOrder(a) - courseOrder(b) ||
+    (a.lessonNo ?? 0) - (b.lessonNo ?? 0) ||
+    a.title.localeCompare(b.title)
+  );
+}
+
+// Human label for a course code (for section headers in the lesson list).
+function courseLabel(course?: string | null): string {
+  if (course === "python") return "Python";
+  if (course === "microbit") return "micro:bit";
+  return "Lessons";
+}
+
+// Group lessons into course sections in curriculum order (python, then
+// micro:bit, then anything else), each section sorted by lesson number.
+function groupLessonsByCourse(
+  lessons: Lesson[]
+): { course: string | null | undefined; items: Lesson[] }[] {
+  const groups = new Map<string, Lesson[]>();
+  for (const l of lessons) {
+    const key = l.course ?? "";
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(l);
+  }
+  return Array.from(groups.entries())
+    .sort((a, b) => (COURSE_ORDER[a[0]] ?? 0) - (COURSE_ORDER[b[0]] ?? 0))
+    .map(([course, items]) => ({
+      course: course || null,
+      items: items.sort(byLessonNo),
+    }));
 }
 
 function isMobileViewport(): boolean {
@@ -925,28 +962,26 @@ function WelcomeScreen({
       )}
 
       {lessons.length > 0 && (
-        <div className="mt-8 w-full text-left">
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
-            Your lessons
-          </p>
-          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
-            {[...lessons]
-              .sort(
-                (a, b) =>
-                  (a.lessonNo ?? 9999) - (b.lessonNo ?? 9999) ||
-                  a.title.localeCompare(b.title)
-              )
-              .map((l) => (
-                <LessonChip
-                  key={l.id}
-                  lesson={l}
-                  onOpen={onOpenLesson}
-                  onRequestAccess={onRequestAccess}
-                  requested={requestedLessonIds.has(l.id)}
-                  light={light}
-                />
-              ))}
-          </div>
+        <div className="mt-8 w-full space-y-6 text-left">
+          {groupLessonsByCourse(lessons).map(({ course, items }) => (
+            <div key={course ?? "default"}>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                {courseLabel(course)}
+              </p>
+              <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+                {items.map((l) => (
+                  <LessonChip
+                    key={l.id}
+                    lesson={l}
+                    onOpen={onOpenLesson}
+                    onRequestAccess={onRequestAccess}
+                    requested={requestedLessonIds.has(l.id)}
+                    light={light}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

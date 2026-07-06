@@ -16,8 +16,8 @@ import {
 import { formatDateOnly } from "@/lib/utils";
 import type { School } from "@/types";
 
-type Draft = { name: string; city: string; country: string };
-const emptyDraft: Draft = { name: "", city: "", country: "Lebanon" };
+type Draft = { name: string; city: string; country: string; programYear: number };
+const emptyDraft: Draft = { name: "", city: "", country: "Lebanon", programYear: 1 };
 
 export default function SchoolsPage() {
   const [schools, setSchools] = useState<School[]>([]);
@@ -45,7 +45,12 @@ export default function SchoolsPage() {
 
   function openEdit(school: School) {
     setError(null);
-    setDraft({ name: school.name, city: school.city, country: school.country });
+    setDraft({
+      name: school.name,
+      city: school.city,
+      country: school.country,
+      programYear: school.programYear ?? 1,
+    });
     setEditing(school);
   }
 
@@ -57,6 +62,7 @@ export default function SchoolsPage() {
       name: draft.name.trim(),
       city: draft.city.trim(),
       country: draft.country.trim(),
+      programYear: draft.programYear,
     };
     try {
       if (editing === "new") {
@@ -110,6 +116,7 @@ export default function SchoolsPage() {
             <TR>
               <TH>School</TH>
               <TH>Location</TH>
+              <TH>Year</TH>
               <TH>Teachers</TH>
               <TH>Admins</TH>
               <TH>Created</TH>
@@ -123,6 +130,7 @@ export default function SchoolsPage() {
                 <TD>
                   {s.city}, {s.country}
                 </TD>
+                <TD>Year {s.programYear}</TD>
                 <TD>{s.teacherCount}</TD>
                 <TD>{s.adminCount}</TD>
                 <TD>{formatDateOnly(s.createdAt)}</TD>
@@ -210,6 +218,22 @@ export default function SchoolsPage() {
               />
             </label>
           </div>
+          <label className="block text-xs font-medium text-slate-700">
+            Curriculum year
+            <select
+              value={draft.programYear}
+              onChange={(e) =>
+                setDraft((v) => ({ ...v, programYear: Number(e.target.value) }))
+              }
+              className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-2 text-sm"
+            >
+              <option value={1}>Year 1 (new school)</option>
+              <option value={2}>Year 2 (returning school)</option>
+            </select>
+            <span className="mt-1 block text-[11px] font-normal text-slate-500">
+              Determines which year&apos;s lessons this school&apos;s teachers receive.
+            </span>
+          </label>
           {error && <p className="text-xs text-red-600">{error}</p>}
         </form>
       </Modal>

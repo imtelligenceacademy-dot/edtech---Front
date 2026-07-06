@@ -22,6 +22,7 @@ export interface School {
   name: string;
   country: string;
   city: string;
+  programYear: number; // curriculum year the school is on (1 or 2)
   teacherCount: number;
   adminCount: number;
   createdAt?: string;
@@ -39,6 +40,8 @@ export interface Lesson {
   slides: Slide[];
   schoolId?: string | null;
   language?: "en" | "fr" | null;
+  year?: number | null; // curriculum year (1 or 2)
+  course?: string | null; // "python" | "microbit" | null
   lessonNo?: number | null;
   fileId?: string | null; // linked PDF, rendered in the lesson viewer
   assignedTeacherIds: string[];
@@ -56,6 +59,7 @@ export interface TeacherLessonAccessRow {
   title: string;
   grade: number;
   language?: "en" | "fr" | null;
+  course?: string | null;
   lessonNo?: number | null;
   status: LessonAccessStatus;
   availableAt?: string | null;
@@ -67,6 +71,7 @@ export interface TeacherLessonAccessRow {
 export interface TeacherAccessTrack {
   grade: number;
   language?: "en" | "fr" | null;
+  year?: number | null;
   lessons: TeacherLessonAccessRow[];
 }
 

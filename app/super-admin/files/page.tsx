@@ -26,7 +26,17 @@ import { cn, formatDateOnly } from "@/lib/utils";
 import type { Lesson, UploadedFile } from "@/types";
 
 type Lang = "en" | "fr";
+type FileBucket = { en: UploadedFile[]; fr: UploadedFile[]; other: UploadedFile[] };
 const GRADES = Array.from({ length: 12 }, (_, i) => i + 1); // 1..12
+const YEARS = [1, 2] as const;
+
+function emptyBucket(): FileBucket {
+  return { en: [], fr: [], other: [] };
+}
+
+function bucketCount(bucket: FileBucket) {
+  return bucket.en.length + bucket.fr.length + bucket.other.length;
+}
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -37,6 +47,7 @@ export default function FilesPage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [language, setLanguage] = useState<Lang>("en");
+  const [year, setYear] = useState<1 | 2>(2);
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "info" | "error"; text: string } | null>(
@@ -56,25 +67,26 @@ export default function FilesPage() {
     refresh().finally(() => setLoading(false));
   }, []);
 
-  // Group files into grade → {en, fr, other}; unsorted = no parsed grade.
-  const { byGrade, unsorted } = useMemo(() => {
+  // Group files into year -> grade -> {en, fr, other}; unsorted = no parsed grade/year.
+  const { byYear, unsorted } = useMemo(() => {
     const lessonById = new Map(lessons.map((l) => [l.id, l]));
-    const byGrade: Record<number, { en: UploadedFile[]; fr: UploadedFile[]; other: UploadedFile[] }> =
-      {};
+    const byYear: Record<number, Record<number, FileBucket>> = {};
     const unsorted: UploadedFile[] = [];
     for (const f of files) {
       const lesson = f.linkedLessonId ? lessonById.get(f.linkedLessonId) : undefined;
       const grade = lesson?.grade ?? null;
-      if (grade == null) {
+      const lessonYear = lesson?.year ?? null;
+      if (grade == null || lessonYear == null) {
         unsorted.push(f);
         continue;
       }
-      const bucket = (byGrade[grade] ??= { en: [], fr: [], other: [] });
+      const gradeBuckets = (byYear[lessonYear] ??= {});
+      const bucket = (gradeBuckets[grade] ??= emptyBucket());
       if (lesson?.language === "en") bucket.en.push(f);
       else if (lesson?.language === "fr") bucket.fr.push(f);
       else bucket.other.push(f);
     }
-    return { byGrade, unsorted };
+    return { byYear, unsorted };
   }, [files, lessons]);
 
   async function handleFiles(fileList?: FileList | null) {
@@ -102,7 +114,7 @@ export default function FilesPage() {
         text: `Uploading ${i + 1} of ${toUpload.length} — ${file.name}…`,
       });
       try {
-        const result = await uploadFile(file, language);
+        const result = await uploadFile(file, language, year);
         if (result.note) skipped += 1;
         else {
           created += 1;
@@ -206,31 +218,57 @@ export default function FilesPage() {
       <Card className="mb-6">
         <CardHeader
           title="Upload"
-          subtitle="Named “Grade N Lesson NN …”. Pick the language, then drop the PDFs — each lands in its grade folder and is assigned automatically."
+          subtitle="Named “Grade N Lesson NN …”. Pick the year and language, then drop the PDFs — each lands in its year and grade folder automatically."
         />
         <CardBody>
-          <div className="mb-4 flex items-center gap-3">
-            <span className="text-xs font-medium text-slate-700">Language of these files:</span>
-            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
-              {(
-                [
-                  ["en", "English"],
-                  ["fr", "French"],
-                ] as [Lang, string][]
-              ).map(([code, label]) => (
-                <button
-                  key={code}
-                  onClick={() => setLanguage(code)}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 font-medium",
-                    language === code
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-600 hover:text-slate-900"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+          <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-medium text-slate-700">Language of these files:</span>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+                {(
+                  [
+                    ["en", "English"],
+                    ["fr", "French"],
+                  ] as [Lang, string][]
+                ).map(([code, label]) => (
+                  <button
+                    key={code}
+                    onClick={() => setLanguage(code)}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 font-medium",
+                      language === code
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-medium text-slate-700">Curriculum year:</span>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
+                {(
+                  [
+                    [1, "Year 1"],
+                    [2, "Year 2"],
+                  ] as [1 | 2, string][]
+                ).map(([code, label]) => (
+                  <button
+                    key={code}
+                    onClick={() => setYear(code)}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 font-medium",
+                      year === code
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -284,12 +322,28 @@ export default function FilesPage() {
         </CardBody>
       </Card>
 
-      {/* Grade folders */}
+      {/* Year and grade folders */}
       <div className="space-y-3">
-        {GRADES.map((g) => {
-          const bucket = byGrade[g] ?? { en: [], fr: [], other: [] };
-          const count = bucket.en.length + bucket.fr.length + bucket.other.length;
-          const key = `g${g}`;
+        {YEARS.map((yearNo) => {
+          const gradeBuckets = byYear[yearNo] ?? {};
+          const gradesWithFiles = GRADES.filter((grade) =>
+            bucketCount(gradeBuckets[grade] ?? emptyBucket()) > 0
+          );
+          const count = gradesWithFiles.reduce(
+            (total, grade) => total + bucketCount(gradeBuckets[grade] ?? emptyBucket()),
+            0
+          );
+          const bucket = gradesWithFiles.reduce(
+            (totals, grade) => {
+              const gradeBucket = gradeBuckets[grade] ?? emptyBucket();
+              totals.en.push(...gradeBucket.en);
+              totals.fr.push(...gradeBucket.fr);
+              totals.other.push(...gradeBucket.other);
+              return totals;
+            },
+            emptyBucket()
+          );
+          const key = `y${yearNo}`;
           const open = isOpen(key, count > 0);
           return (
             <div key={key} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -302,7 +356,7 @@ export default function FilesPage() {
                 ) : (
                   <Folder size={18} className="text-slate-400" />
                 )}
-                <span className="font-medium text-slate-900">Grade {g}</span>
+                <span className="font-medium text-slate-900">Year {yearNo}</span>
                 <span className="text-xs text-slate-500">
                   {count} file{count === 1 ? "" : "s"}
                   {count > 0 && ` · ${bucket.en.length} EN · ${bucket.fr.length} FR`}
@@ -316,13 +370,57 @@ export default function FilesPage() {
                 />
               </button>
               {open && (
-                <div className="grid grid-cols-1 gap-5 border-t border-slate-100 p-4 lg:grid-cols-2">
-                  {langSection("English", "info", bucket.en)}
-                  {langSection("French", "brand", bucket.fr)}
-                  {bucket.other.length > 0 && (
-                    <div className="lg:col-span-2">
-                      {langSection("Unspecified language", "muted", bucket.other)}
-                    </div>
+                <div className="space-y-3 border-t border-slate-100 p-4">
+                  {gradesWithFiles.length === 0 ? (
+                    <p className="text-xs text-slate-400">No files in Year {yearNo} yet.</p>
+                  ) : (
+                    gradesWithFiles.map((grade) => {
+                      const gradeBucket = gradeBuckets[grade] ?? emptyBucket();
+                      const gradeCount = bucketCount(gradeBucket);
+                      const gradeKey = `${key}-g${grade}`;
+                      const gradeOpen = isOpen(gradeKey, gradeCount > 0);
+                      return (
+                        <div
+                          key={gradeKey}
+                          className="overflow-hidden rounded-lg border border-slate-100 bg-slate-50/50"
+                        >
+                          <button
+                            onClick={() => toggle(gradeKey, gradeCount > 0)}
+                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white"
+                          >
+                            {gradeOpen ? (
+                              <FolderOpen size={16} className="text-brand-600" />
+                            ) : (
+                              <Folder size={16} className="text-slate-400" />
+                            )}
+                            <span className="text-sm font-medium text-slate-900">Grade {grade}</span>
+                            <span className="text-xs text-slate-500">
+                              {gradeCount} file{gradeCount === 1 ? "" : "s"}
+                              {gradeCount > 0 &&
+                                ` · ${gradeBucket.en.length} EN · ${gradeBucket.fr.length} FR`}
+                            </span>
+                            <ChevronDown
+                              size={15}
+                              className={cn(
+                                "ml-auto text-slate-400 transition-transform",
+                                gradeOpen && "rotate-180"
+                              )}
+                            />
+                          </button>
+                          {gradeOpen && (
+                            <div className="grid grid-cols-1 gap-5 border-t border-slate-100 bg-white p-4 lg:grid-cols-2">
+                              {langSection("English", "info", gradeBucket.en)}
+                              {langSection("French", "brand", gradeBucket.fr)}
+                              {gradeBucket.other.length > 0 && (
+                                <div className="lg:col-span-2">
+                                  {langSection("Unspecified language", "muted", gradeBucket.other)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}

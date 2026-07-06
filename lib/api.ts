@@ -191,7 +191,9 @@ export function listSchools() {
   return apiFetch<School[]>("/api/schools");
 }
 
-export function createSchool(payload: Pick<School, "name" | "city" | "country">) {
+export function createSchool(
+  payload: Pick<School, "name" | "city" | "country"> & { programYear?: number }
+) {
   return apiFetch<School>("/api/schools", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -200,7 +202,7 @@ export function createSchool(payload: Pick<School, "name" | "city" | "country">)
 
 export function updateSchool(
   schoolId: string,
-  payload: Partial<Pick<School, "name" | "city" | "country">>
+  payload: Partial<Pick<School, "name" | "city" | "country" | "programYear">>
 ) {
   return apiFetch<School>(`/api/schools/${schoolId}`, {
     method: "PATCH",
@@ -575,11 +577,13 @@ export type UploadResult = {
 export async function uploadFile(
   file: File,
   language: "en" | "fr",
+  year: 1 | 2 = 2,
   retried = false
 ): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file);
   form.append("language", language);
+  form.append("year", String(year));
   const response = await fetch(`${API_BASE_URL}/api/files`, {
     method: "POST",
     credentials: "include",
@@ -588,7 +592,7 @@ export async function uploadFile(
   });
 
   if (response.status === 401 && !retried) {
-    if (await refreshAccessToken()) return uploadFile(file, language, true);
+    if (await refreshAccessToken()) return uploadFile(file, language, year, true);
   }
 
   return parseResponse<UploadResult>(response);
