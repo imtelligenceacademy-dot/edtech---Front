@@ -215,7 +215,9 @@ export function Chatbot() {
   // The teacher experience is light-only.
   const light = true;
   const [fullscreenLesson, setFullscreenLesson] = useState<Lesson | null>(null);
-  // ICT Fair (shown only to teachers granted access).
+  // ICT Fair (shown only to teachers granted access). View-only: a project
+  // grid in the main area, and the picked project opens full-screen. No chat
+  // grounding, no progress tracking.
   const [fairProjects, setFairProjects] = useState<FairProject[]>([]);
   const [fairViewer, setFairViewer] = useState<FairProject | null>(null);
   const [showFairProjects, setShowFairProjects] = useState(false);
@@ -295,7 +297,11 @@ export function Chatbot() {
 
     try {
       await streamTeacherAI(
-        { message: text, lessonId: openedLesson?.id ?? null, history },
+        {
+          message: text,
+          lessonId: openedLesson?.id ?? null,
+          history,
+        },
         {
           onMeta: (m) => {
             sourceRef = m.sourceRef;
@@ -378,6 +384,7 @@ export function Chatbot() {
       });
       return;
     }
+    setShowFairProjects(false);
     setOpenedLesson(lesson);
     setOpenedSlide(1);
     const mobilePdf = Boolean(lesson.fileId) && isMobileViewport();
@@ -518,13 +525,17 @@ export function Chatbot() {
     setOpenedLesson(null);
   }
 
+  // Enter ICT Fair mode: show the project grid in the main area.
   function openFairProjects() {
     setShowFairProjects(true);
     setSelectedGrade(null);
     setOpenedLesson(null);
     setFullscreenLesson(null);
-    setMessages([]);
-    setThinking(false);
+  }
+
+  // Open a single project in the full-screen protected viewer.
+  function openFairProject(project: FairProject) {
+    setFairViewer(project);
   }
 
   // Return to the clean starting screen (grade picker) with an empty session.
@@ -685,7 +696,7 @@ export function Chatbot() {
           {showFairProjects ? (
             <FairProjectsScreen
               projects={fairProjects}
-              onOpen={setFairViewer}
+              onOpen={openFairProject}
               light={light}
             />
           ) : selectedGrade === null ? (
@@ -714,7 +725,8 @@ export function Chatbot() {
           )}
         </div>
 
-        {/* Composer */}
+        {/* Composer — hidden in ICT Fair mode (view-only, no chat) */}
+        {!showFairProjects && (
         <div
           className={cn(
             "border-t px-4 py-4 backdrop-blur-xl sm:px-8",
@@ -736,7 +748,7 @@ export function Chatbot() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                disabled={selectedGrade === null}
+                disabled={selectedGrade === null && !showFairProjects}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -760,7 +772,7 @@ export function Chatbot() {
               />
               <button
                 onClick={() => send()}
-                disabled={!input.trim() || selectedGrade === null}
+                disabled={!input.trim() || (selectedGrade === null && !showFairProjects)}
                 className={cn(
                   "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition",
                   input.trim()
@@ -802,6 +814,7 @@ export function Chatbot() {
             </p>
           </div>
         </div>
+        )}
       </div>
 
       {/* Report rail — hidden while a lesson is open so the viewer + chat get the space */}
@@ -809,7 +822,7 @@ export function Chatbot() {
         className={cn(
           "relative z-10 hidden w-80 shrink-0 flex-col border-l backdrop-blur-xl",
           light ? "border-slate-200/60 bg-white/40" : "border-white/5 bg-slate-950/40",
-          openedLesson ? "" : "xl:flex"
+          openedLesson || showFairProjects ? "" : "xl:flex"
         )}
       >
         <div
@@ -1273,88 +1286,6 @@ function FairButton({
     >
       <Presentation size={13} /> <span className="hidden sm:inline">ICT Fair</span>
     </button>
-  );
-}
-
-// Header control for teachers with ICT Fair access: a dropdown listing the
-// shared projects; picking one opens it full-screen.
-function FairMenu({
-  projects,
-  onOpen,
-  light,
-}: {
-  projects: FairProject[];
-  onOpen: (project: FairProject) => void;
-  light: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    if (open) document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        title="ICT Fair projects"
-        className={cn(
-          "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
-          light
-            ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
-            : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
-        )}
-      >
-        <Presentation size={13} /> <span className="hidden sm:inline">ICT Fair</span>
-        <ChevronDown size={12} className={cn("transition", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div
-          className={cn(
-            "absolute right-0 top-[calc(100%+6px)] z-50 w-64 overflow-hidden rounded-xl border shadow-2xl",
-            light ? "border-slate-200 bg-white" : "border-white/10 bg-slate-900"
-          )}
-        >
-          <div
-            className={cn(
-              "border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wider",
-              light ? "border-slate-100 text-slate-500" : "border-white/5 text-slate-400"
-            )}
-          >
-            ICT Fair projects
-          </div>
-          {projects.length === 0 ? (
-            <p className={cn("px-3 py-3 text-xs", light ? "text-slate-500" : "text-slate-400")}>
-              No projects shared yet.
-            </p>
-          ) : (
-            <div className="max-h-72 overflow-y-auto py-1">
-              {projects.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    onOpen(p);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition",
-                    light ? "text-slate-700 hover:bg-slate-50" : "text-slate-200 hover:bg-white/5"
-                  )}
-                >
-                  <Presentation size={14} className={light ? "text-brand-600" : "text-brand-300"} />
-                  <span className="min-w-0 flex-1 truncate">{p.title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 

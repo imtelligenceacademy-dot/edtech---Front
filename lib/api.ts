@@ -433,7 +433,11 @@ async function streamSSE(
 
 // Teacher assistant — streamed, grounded in the open lesson.
 export function streamTeacherAI(
-  payload: { message: string; lessonId?: string | null; history?: AIChatTurn[] },
+  payload: {
+    message: string;
+    lessonId?: string | null;
+    history?: AIChatTurn[];
+  },
   handlers: StreamHandlers
 ): Promise<void> {
   return streamSSE("/api/ai/chat/stream", payload, handlers);
