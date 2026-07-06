@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Info, Wand2, Search, ChevronRight, X } from "lucide-react";
+import { Check, Info, Wand2, Search, ChevronRight, X, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
 import {
   assignTeacher,
+  deleteLesson,
   listLessons,
   listSchools,
   listUsers,
@@ -50,6 +52,9 @@ export default function AccessControlPage() {
   const [gradeFilter, setGradeFilter] = useState<number | "all">("all");
   const [langFilter, setLangFilter] = useState<string | "all">("all");
   const [collapsedGrades, setCollapsedGrades] = useState<Set<number>>(() => new Set());
+  // Lesson pending deletion.
+  const [deletingLesson, setDeletingLesson] = useState<Lesson | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     Promise.all([listLessons(), listSchools(), listUsers()])
@@ -103,6 +108,28 @@ export default function AccessControlPage() {
           : [...list, id],
       };
     });
+  }
+
+  async function confirmDeleteLesson() {
+    if (!deletingLesson) return;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await deleteLesson(deletingLesson.id);
+      const removedId = deletingLesson.id;
+      setLessons((cur) => cur.filter((l) => l.id !== removedId));
+      setAssignments((cur) => {
+        const next = { ...cur };
+        delete next[removedId];
+        return next;
+      });
+      if (lessonId === removedId) setLessonId("");
+      setDeletingLesson(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete lesson.");
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function save() {
@@ -309,27 +336,36 @@ export default function AccessControlPage() {
                     {!collapsed && (
                       <div className="mt-1 space-y-2">
                         {groupLessons.map((l) => (
-                          <button
-                            key={l.id}
-                            onClick={() => {
-                              if (l.id === lessonId || !confirmDiscardUnsaved()) return;
-                              setLessonId(l.id);
-                              setSaved(false);
-                              setError(null);
-                            }}
-                            className={cn(
-                              "w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                              lessonId === l.id
-                                ? "border-brand bg-brand-50"
-                                : "border-slate-200 hover:bg-slate-50"
-                            )}
-                          >
-                            <div className="font-medium text-slate-900">{l.title}</div>
-                            <div className="text-xs text-slate-500">
-                              Grade {l.grade}
-                              {l.language ? ` · ${l.language.toUpperCase()}` : ""} · {l.subject}
-                            </div>
-                          </button>
+                          <div key={l.id} className="group flex items-stretch gap-1">
+                            <button
+                              onClick={() => {
+                                if (l.id === lessonId || !confirmDiscardUnsaved()) return;
+                                setLessonId(l.id);
+                                setSaved(false);
+                                setError(null);
+                              }}
+                              className={cn(
+                                "min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                                lessonId === l.id
+                                  ? "border-brand bg-brand-50"
+                                  : "border-slate-200 hover:bg-slate-50"
+                              )}
+                            >
+                              <div className="truncate font-medium text-slate-900">{l.title}</div>
+                              <div className="text-xs text-slate-500">
+                                Grade {l.grade}
+                                {l.language ? ` · ${l.language.toUpperCase()}` : ""} · {l.subject}
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => setDeletingLesson(l)}
+                              title="Delete lesson"
+                              aria-label={`Delete ${l.title}`}
+                              className="flex w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-400 opacity-0 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -416,6 +452,29 @@ export default function AccessControlPage() {
           {saving ? "Saving…" : "Save changes"}
         </Button>
       </div>
+
+      {/* Delete-lesson confirmation */}
+      <Modal
+        open={deletingLesson !== null}
+        onClose={() => setDeletingLesson(null)}
+        title="Delete lesson"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeletingLesson(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDeleteLesson} disabled={deleteBusy}>
+              {deleteBusy ? "Deleting…" : "Delete lesson"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete{" "}
+          <span className="font-medium text-slate-900">{deletingLesson?.title}</span>? This removes
+          it from every teacher and their progress on it, and deletes its PDF. This cannot be undone.
+        </p>
+      </Modal>
     </>
   );
 }

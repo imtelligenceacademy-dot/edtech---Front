@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
 import {
   deleteFairProject,
   deleteUploadedFile,
@@ -65,6 +66,10 @@ export default function FilesPage() {
   const [fairBusy, setFairBusy] = useState(false);
   const [fairMessage, setFairMessage] = useState<string | null>(null);
   const fairInputRef = useRef<HTMLInputElement>(null);
+
+  // File pending deletion confirmation.
+  const [deletingFile, setDeletingFile] = useState<UploadedFile | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   async function refresh() {
     const [fileRows, lessonRows, fairRows] = await Promise.all([
@@ -187,9 +192,18 @@ export default function FilesPage() {
     });
   }
 
-  async function removeFile(fileId: string) {
-    await deleteUploadedFile(fileId);
-    setFiles((prev) => prev.filter((f) => f.id !== fileId));
+  // Deleting a lesson PDF removes the whole lesson (and every teacher's progress
+  // on it), so confirm first, then reload files + lessons.
+  async function confirmDeleteFile() {
+    if (!deletingFile) return;
+    setDeleteBusy(true);
+    try {
+      await deleteUploadedFile(deletingFile.id);
+      await refresh();
+      setDeletingFile(null);
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   function isOpen(key: string, hasFiles: boolean) {
@@ -231,7 +245,7 @@ export default function FilesPage() {
         >
           <Eye size={13} /> View
         </a>
-        <Button size="sm" variant="ghost" onClick={() => removeFile(f.id)}>
+        <Button size="sm" variant="ghost" onClick={() => setDeletingFile(f)}>
           <Trash2 size={12} />
         </Button>
       </div>
@@ -577,6 +591,30 @@ export default function FilesPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* Delete confirmation — deleting a lesson PDF removes the whole lesson. */}
+      <Modal
+        open={deletingFile !== null}
+        onClose={() => setDeletingFile(null)}
+        title="Delete lesson"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeletingFile(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDeleteFile} disabled={deleteBusy}>
+              {deleteBusy ? "Deleting…" : "Delete lesson"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete{" "}
+          <span className="font-medium text-slate-900">{deletingFile?.filename}</span>? This removes
+          the lesson from every teacher and Access Control, along with their progress on it. This
+          cannot be undone.
+        </p>
+      </Modal>
     </>
   );
 }

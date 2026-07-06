@@ -275,6 +275,11 @@ export function listLessons() {
   return apiFetch<Lesson[]>("/api/lessons");
 }
 
+// Fully delete a lesson (its PDFs, assignments, progress, access requests).
+export function deleteLesson(lessonId: string) {
+  return apiFetch<void>(`/api/lessons/${lessonId}`, { method: "DELETE" });
+}
+
 // --- Lesson access requests (teacher -> super-admin) ------------------------ #
 export function requestLessonAccess(lessonId: string, note?: string) {
   return apiFetch<AccessRequest>("/api/access-requests", {
