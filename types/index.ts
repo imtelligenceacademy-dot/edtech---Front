@@ -13,8 +13,16 @@ export interface User {
   status: UserStatus;
   grades?: string[]; // teacher grade tokens, e.g. ["KG1","G1"]
   language?: "en" | "fr" | "both" | null; // teacher language of instruction
+  ictFairAccess?: boolean; // teacher can see the ICT Fair section
   createdAt: string;
   lastLoginAt?: string;
+}
+
+export interface FairProject {
+  id: string;
+  title: string;
+  fileId?: string | null;
+  createdAt?: string;
 }
 
 export interface School {
@@ -182,5 +190,6 @@ export interface Session {
   schoolId?: string;
   name: string;
   email: string;
+  ictFairAccess?: boolean;
   accessToken?: string;
 }

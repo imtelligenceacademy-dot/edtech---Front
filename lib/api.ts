@@ -2,6 +2,7 @@
 
 import type {
   AccessRequest,
+  FairProject,
   Lesson,
   ProgressEntry,
   Report,
@@ -226,6 +227,7 @@ export function createUser(payload: {
   schoolId?: string;
   grades?: string[];
   language?: "en" | "fr" | "both";
+  ictFairAccess?: boolean;
 }) {
   return apiFetch<User>("/api/users", {
     method: "POST",
@@ -249,6 +251,7 @@ export function updateUser(
     schoolId: string | null;
     grades: string[];
     language: "en" | "fr" | "both";
+    ictFairAccess: boolean;
   }>
 ) {
   return apiFetch<User>(`/api/users/${userId}`, {
@@ -638,4 +641,31 @@ export function deleteUploadedFile(fileId: string) {
   return apiFetch<void>(`/api/files/${fileId}`, {
     method: "DELETE",
   });
+}
+
+// --- ICT Fair projects ----------------------------------------------------- #
+export function listFairProjects() {
+  return apiFetch<FairProject[]>("/api/fair");
+}
+
+export async function uploadFairProject(
+  file: File,
+  retried = false
+): Promise<FairProject> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/api/fair`, {
+    method: "POST",
+    credentials: "include",
+    headers: withAuthHeaders(),
+    body: form,
+  });
+  if (response.status === 401 && !retried) {
+    if (await refreshAccessToken()) return uploadFairProject(file, true);
+  }
+  return parseResponse<FairProject>(response);
+}
+
+export function deleteFairProject(projectId: string) {
+  return apiFetch<void>(`/api/fair/${projectId}`, { method: "DELETE" });
 }

@@ -16,14 +16,17 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import {
+  deleteFairProject,
   deleteUploadedFile,
   fileDownloadUrl,
+  listFairProjects,
   listLessons,
   listUploadedFiles,
+  uploadFairProject,
   uploadFile,
 } from "@/lib/api";
 import { cn, formatDateOnly } from "@/lib/utils";
-import type { Lesson, UploadedFile } from "@/types";
+import type { FairProject, Lesson, UploadedFile } from "@/types";
 
 type Lang = "en" | "fr";
 type FileBucket = { en: UploadedFile[]; fr: UploadedFile[]; other: UploadedFile[] };
@@ -57,10 +60,54 @@ export default function FilesPage() {
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ICT Fair state (separate from the lesson pipeline).
+  const [fairProjects, setFairProjects] = useState<FairProject[]>([]);
+  const [fairBusy, setFairBusy] = useState(false);
+  const [fairMessage, setFairMessage] = useState<string | null>(null);
+  const fairInputRef = useRef<HTMLInputElement>(null);
+
   async function refresh() {
-    const [fileRows, lessonRows] = await Promise.all([listUploadedFiles(), listLessons()]);
+    const [fileRows, lessonRows, fairRows] = await Promise.all([
+      listUploadedFiles(),
+      listLessons(),
+      listFairProjects(),
+    ]);
     setFiles(fileRows);
     setLessons(lessonRows);
+    setFairProjects(fairRows);
+  }
+
+  async function handleFairFiles(fileList?: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const pdfs = Array.from(fileList).filter(
+      (f) => f.name.toLowerCase().endsWith(".pdf") && f.size <= 20 * 1024 * 1024
+    );
+    if (pdfs.length === 0) {
+      setFairMessage("No valid PDF (≤20 MB) selected.");
+      return;
+    }
+    setFairBusy(true);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const file of pdfs) {
+      try {
+        await uploadFairProject(file);
+        ok += 1;
+      } catch {
+        failed.push(file.name);
+      }
+    }
+    const refreshed = await listFairProjects();
+    setFairProjects(refreshed);
+    setFairBusy(false);
+    setFairMessage(
+      `${ok} project${ok === 1 ? "" : "s"} uploaded${failed.length ? ` · ${failed.length} failed` : ""}.`
+    );
+  }
+
+  async function removeFairProject(id: string) {
+    await deleteFairProject(id);
+    setFairProjects((prev) => prev.filter((p) => p.id !== id));
   }
 
   useEffect(() => {
@@ -444,6 +491,92 @@ export default function FilesPage() {
           </div>
         )}
       </div>
+
+      {/* ICT Fair — separate from lessons: no naming convention, no assignment. */}
+      <Card className="mt-6">
+        <CardHeader
+          title="ICT Fair"
+          subtitle="Project PDFs shown to teachers who have ICT Fair access. Any filename — no grade/lesson convention."
+        />
+        <CardBody>
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleFairFiles(e.dataTransfer.files);
+            }}
+            className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center"
+          >
+            <UploadCloud className="mx-auto text-slate-400" size={28} />
+            <p className="mt-2 text-sm font-medium text-slate-700">Drop fair project PDFs here</p>
+            <div className="mt-3">
+              <input
+                ref={fairInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                multiple
+                className="sr-only"
+                onChange={(e) => {
+                  handleFairFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                disabled={fairBusy}
+                onClick={() => fairInputRef.current?.click()}
+              >
+                <UploadCloud size={14} /> {fairBusy ? "Uploading…" : "Choose files"}
+              </Button>
+            </div>
+            {fairMessage && (
+              <p className="mt-3 text-xs text-slate-600" role="status">
+                {fairMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-1.5 flex items-center gap-2">
+              <Badge tone="brand">Projects</Badge>
+              <span className="text-[11px] text-slate-400">
+                {fairProjects.length} project{fairProjects.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {fairProjects.length === 0 ? (
+              <p className="px-1 text-xs text-slate-400">No fair projects yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {fairProjects.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2"
+                  >
+                    <FileText size={14} className="shrink-0 text-slate-400" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
+                      {p.title}
+                    </span>
+                    {p.fileId && (
+                      <a
+                        href={fileDownloadUrl(p.fileId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        title="View PDF"
+                      >
+                        <Eye size={13} /> View
+                      </a>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => removeFairProject(p.id)}>
+                      <Trash2 size={12} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardBody>
+      </Card>
     </>
   );
 }

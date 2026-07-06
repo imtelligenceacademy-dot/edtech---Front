@@ -39,6 +39,7 @@ type Draft = {
   schoolId: string;
   grades: string[];
   language: Lang;
+  ictFairAccess: boolean;
 };
 
 const blankDraft: Draft = {
@@ -49,6 +50,7 @@ const blankDraft: Draft = {
   schoolId: "",
   grades: [],
   language: "en",
+  ictFairAccess: false,
 };
 
 const LANG_LABEL: Record<Lang, string> = {
@@ -114,6 +116,7 @@ export default function AccountsPage() {
       schoolId: u.schoolId ?? schools[0]?.id ?? "",
       grades: u.grades ?? [],
       language: (u.language ?? "en") as Lang,
+      ictFairAccess: u.ictFairAccess ?? false,
     });
     setEditing(u);
   }
@@ -139,6 +142,7 @@ export default function AccountsPage() {
           schoolId: schoolId ?? undefined,
           grades: isTeacher ? draft.grades : [],
           language: isTeacher ? draft.language : undefined,
+          ictFairAccess: isTeacher ? draft.ictFairAccess : false,
         });
         setUsers((prev) => [user, ...prev]);
         setFilter("all");
@@ -150,6 +154,7 @@ export default function AccountsPage() {
           schoolId,
           grades: isTeacher ? draft.grades : [],
           language: isTeacher ? draft.language : undefined,
+          ictFairAccess: isTeacher ? draft.ictFairAccess : false,
         });
         if (draft.password.trim()) {
           await resetUserPassword(editing.id, draft.password);
@@ -354,6 +359,11 @@ export default function AccountsPage() {
                             className="w-fit"
                           >
                             {LANG_LABEL[u.language as Lang]}
+                          </Badge>
+                        )}
+                        {u.ictFairAccess && (
+                          <Badge tone="brand" className="w-fit">
+                            ICT Fair
                           </Badge>
                         )}
                       </div>
@@ -567,6 +577,28 @@ export default function AccountsPage() {
                   </select>
                   <span className="mt-1 block text-[11px] font-normal text-slate-500">
                     Determines whether this teacher receives English or French lesson PDFs.
+                  </span>
+                </label>
+              )}
+
+              {/* ICT Fair access — a per-teacher permission, independent of grades. */}
+              {isTeacher && (
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <input
+                    type="checkbox"
+                    checked={draft.ictFairAccess}
+                    onChange={(e) =>
+                      setDraft((v) => ({ ...v, ictFairAccess: e.target.checked }))
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+                  />
+                  <span>
+                    <span className="block text-xs font-medium text-slate-700">
+                      ICT Fair access
+                    </span>
+                    <span className="mt-0.5 block text-[11px] font-normal text-slate-500">
+                      Lets this teacher see the ICT Fair section and open its projects.
+                    </span>
                   </span>
                 </label>
               )}

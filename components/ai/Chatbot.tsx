@@ -29,13 +29,14 @@ import {
   getSession,
   logout,
   listLessons,
+  listFairProjects,
   listMyAccessRequests,
   requestLessonAccess,
   saveLessonProgress,
   streamTeacherAI,
 } from "@/lib/api";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
-import type { AIMessage, Lesson, Session } from "@/types";
+import type { AIMessage, FairProject, Lesson, Session } from "@/types";
 
 type ReportEntry = {
   id: string;
@@ -214,6 +215,10 @@ export function Chatbot() {
   // The teacher experience is light-only.
   const light = true;
   const [fullscreenLesson, setFullscreenLesson] = useState<Lesson | null>(null);
+  // ICT Fair (shown only to teachers granted access).
+  const [fairProjects, setFairProjects] = useState<FairProject[]>([]);
+  const [fairViewer, setFairViewer] = useState<FairProject | null>(null);
+  const [showFairProjects, setShowFairProjects] = useState(false);
   // Lesson ids with a pending access request to the super-admin.
   const [requestedLessonIds, setRequestedLessonIds] = useState<Set<string>>(
     () => new Set()
@@ -237,6 +242,12 @@ export function Chatbot() {
       )
       .catch(() => {});
   }, []);
+
+  // Load ICT Fair projects once we know the teacher has been granted access.
+  useEffect(() => {
+    if (!session?.ictFairAccess) return;
+    listFairProjects().then(setFairProjects).catch(() => setFairProjects([]));
+  }, [session?.ictFairAccess]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -502,8 +513,18 @@ export function Chatbot() {
     selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
 
   function chooseGrade(grade: number) {
+    setShowFairProjects(false);
     setSelectedGrade(grade);
     setOpenedLesson(null);
+  }
+
+  function openFairProjects() {
+    setShowFairProjects(true);
+    setSelectedGrade(null);
+    setOpenedLesson(null);
+    setFullscreenLesson(null);
+    setMessages([]);
+    setThinking(false);
   }
 
   // Return to the clean starting screen (grade picker) with an empty session.
@@ -514,6 +535,7 @@ export function Chatbot() {
     setThinking(false);
     setOpenedLesson(null);
     setFullscreenLesson(null);
+    setShowFairProjects(false);
     setSelectedGrade(null);
     refreshLessons();
   }
@@ -588,6 +610,11 @@ export function Chatbot() {
         />
       )}
 
+      {/* ICT Fair project — full-screen, copy-protected, no progress tracking */}
+      {fairViewer?.fileId && (
+        <FairFullscreen project={fairViewer} onClose={() => setFairViewer(null)} />
+      )}
+
       {/* Chat column */}
       <div className="relative z-10 flex h-full min-h-0 min-w-0 flex-1 flex-col">
         {/* Header — relative z-30 lifts it (and its dropdown menus) above the
@@ -630,7 +657,7 @@ export function Chatbot() {
               Online · Lesson copilot
             </p>
           </div>
-          {(selectedGrade !== null || messages.length > 0) && (
+          {(selectedGrade !== null || messages.length > 0 || showFairProjects) && (
             <button
               onClick={resetSession}
               title="Start a new session"
@@ -644,6 +671,9 @@ export function Chatbot() {
               <Plus size={13} /> <span className="hidden sm:inline">New chat</span>
             </button>
           )}
+          {session?.ictFairAccess && (
+            <FairButton active={showFairProjects} onClick={openFairProjects} light={light} />
+          )}
           <UserMenu session={session} light={light} />
         </div>
 
@@ -652,7 +682,13 @@ export function Chatbot() {
           ref={scrollRef}
           className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
         >
-          {selectedGrade === null ? (
+          {showFairProjects ? (
+            <FairProjectsScreen
+              projects={fairProjects}
+              onOpen={setFairViewer}
+              light={light}
+            />
+          ) : selectedGrade === null ? (
             <GradeGate
               grades={availableGrades}
               loading={!lessonsLoaded}
@@ -709,7 +745,9 @@ export function Chatbot() {
                 }}
                 rows={1}
                 placeholder={
-                  selectedGrade === null
+                  showFairProjects
+                    ? "Open an ICT project above..."
+                    : selectedGrade === null
                     ? "Choose a grade above to begin…"
                     : "Message IM-Telligence AI…"
                 }
@@ -988,6 +1026,76 @@ function WelcomeScreen({
   );
 }
 
+function FairProjectsScreen({
+  projects,
+  onOpen,
+  light,
+}: {
+  projects: FairProject[];
+  onOpen: (project: FairProject) => void;
+  light: boolean;
+}) {
+  return (
+    <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center py-6 text-center sm:py-10">
+      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand to-brand-800 shadow-xl shadow-brand/40">
+        <Presentation size={28} className="text-white" />
+      </div>
+      <h1
+        className={cn(
+          "bg-clip-text text-3xl font-semibold text-transparent sm:text-4xl",
+          light
+            ? "bg-gradient-to-r from-slate-900 via-slate-700 to-slate-500"
+            : "bg-gradient-to-r from-white via-slate-200 to-slate-400"
+        )}
+      >
+        ICT Fair projects
+      </h1>
+      <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
+        Open a shared ICT Fair project to present it in the protected viewer.
+      </p>
+
+      {projects.length === 0 ? (
+        <p className={cn("mt-8 text-sm", light ? "text-slate-500" : "text-slate-400")}>
+          No ICT Fair projects shared yet.
+        </p>
+      ) : (
+        <div className="mt-8 grid w-full grid-cols-1 gap-2 text-left sm:grid-cols-2">
+          {projects.map((project) => (
+            <button
+              key={project.id}
+              onClick={() => project.fileId && onOpen(project)}
+              disabled={!project.fileId}
+              className={cn(
+                "group flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition",
+                project.fileId
+                  ? "border-slate-200 bg-white/70 hover:border-brand/40 hover:bg-white"
+                  : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
+              )}
+            >
+              <span
+                className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
+                  project.fileId
+                    ? "bg-slate-100 text-brand-600 group-hover:bg-brand/20"
+                    : "bg-slate-100 text-slate-400"
+                )}
+              >
+                <Presentation size={14} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{project.title}</span>
+                <span className="text-[11px] text-slate-400">
+                  {project.fileId ? "PDF project" : "Missing file"}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // A lesson tile in the welcome list. Reflects the sequential-unlock state:
 // available lessons open normally; completed/waiting/locked ones show why and,
 // when clicked, surface a "ask your admin" message in the chat.
@@ -1137,6 +1245,115 @@ function MessageBubble({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function FairButton({
+  active,
+  onClick,
+  light,
+}: {
+  active: boolean;
+  onClick: () => void;
+  light: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title="ICT Fair projects"
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
+        active
+          ? "border-slate-900 bg-white text-slate-900"
+          : light
+          ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
+          : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
+      )}
+    >
+      <Presentation size={13} /> <span className="hidden sm:inline">ICT Fair</span>
+    </button>
+  );
+}
+
+// Header control for teachers with ICT Fair access: a dropdown listing the
+// shared projects; picking one opens it full-screen.
+function FairMenu({
+  projects,
+  onOpen,
+  light,
+}: {
+  projects: FairProject[];
+  onOpen: (project: FairProject) => void;
+  light: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="ICT Fair projects"
+        className={cn(
+          "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
+          light
+            ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
+            : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
+        )}
+      >
+        <Presentation size={13} /> <span className="hidden sm:inline">ICT Fair</span>
+        <ChevronDown size={12} className={cn("transition", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div
+          className={cn(
+            "absolute right-0 top-[calc(100%+6px)] z-50 w-64 overflow-hidden rounded-xl border shadow-2xl",
+            light ? "border-slate-200 bg-white" : "border-white/10 bg-slate-900"
+          )}
+        >
+          <div
+            className={cn(
+              "border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wider",
+              light ? "border-slate-100 text-slate-500" : "border-white/5 text-slate-400"
+            )}
+          >
+            ICT Fair projects
+          </div>
+          {projects.length === 0 ? (
+            <p className={cn("px-3 py-3 text-xs", light ? "text-slate-500" : "text-slate-400")}>
+              No projects shared yet.
+            </p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto py-1">
+              {projects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    onOpen(p);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition",
+                    light ? "text-slate-700 hover:bg-slate-50" : "text-slate-200 hover:bg-white/5"
+                  )}
+                >
+                  <Presentation size={14} className={light ? "text-brand-600" : "text-brand-300"} />
+                  <span className="min-w-0 flex-1 truncate">{p.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1592,6 +1809,48 @@ function FullscreenPdf({
           onExit={onClose}
           onCompleted={onCompleted}
         />
+      </div>
+    </div>
+  );
+}
+
+// Full-screen viewer for an ICT Fair project — same copy protection as lessons,
+// but no lessonId so there's no progress tracking or completion.
+function FairFullscreen({
+  project,
+  onClose,
+}: {
+  project: FairProject;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-slate-100">
+      <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-700 text-white shadow">
+          <Presentation size={15} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900">{project.title}</p>
+          <p className="text-[11px] text-slate-500">ICT Fair · Full-screen preview</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 transition hover:bg-slate-100"
+          aria-label="Exit full-screen preview"
+        >
+          <Minimize2 size={13} /> Exit full screen
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <PdfCanvasViewer fileId={project.fileId as string} light onExit={onClose} />
       </div>
     </div>
   );
