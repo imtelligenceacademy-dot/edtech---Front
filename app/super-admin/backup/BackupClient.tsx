@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import {
   Database,
   DownloadCloud,
+  FileArchive,
   Mail,
   Plus,
   X,
@@ -19,6 +20,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import {
   downloadDatabase,
+  downloadFilesArchive,
   emailDatabase,
   restoreDatabase,
   wipeDatabase,
@@ -28,6 +30,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function BackupClient() {
   const [downloading, setDownloading] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const [recipients, setRecipients] = useState<string[]>([]);
   const [entry, setEntry] = useState("");
@@ -82,6 +85,21 @@ export function BackupClient() {
       setResult({ tone: "error", text: e instanceof Error ? e.message : "Download failed." });
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function handleArchive() {
+    setArchiving(true);
+    setResult(null);
+    try {
+      await downloadFilesArchive();
+    } catch (e) {
+      setResult({
+        tone: "error",
+        text: e instanceof Error ? e.message : "PDF archive failed.",
+      });
+    } finally {
+      setArchiving(false);
     }
   }
 
@@ -155,6 +173,40 @@ export function BackupClient() {
                 {downloading ? "Preparing…" : "Download backup"}
               </Button>
             </div>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Contains records only — lesson PDFs are stored as files and must be
+              downloaded separately.
+            </p>
+          </CardBody>
+        </Card>
+
+        {/* Lesson PDF archive — the companion to the DB backup */}
+        <Card>
+          <CardHeader
+            title="Download lesson PDFs"
+            subtitle="Every lesson & ICT Fair PDF, as a zip."
+          />
+          <CardBody>
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <FileArchive size={20} />
+              </span>
+              <p className="text-sm text-slate-600">
+                The database backup stores lesson <em>records</em>, not the PDF files
+                themselves. Download this alongside it so a restore has the actual
+                lesson content.
+              </p>
+            </div>
+            <div className="mt-4">
+              <Button onClick={handleArchive} disabled={archiving}>
+                {archiving ? <Loader2 size={14} className="animate-spin" /> : <FileArchive size={14} />}
+                {archiving ? "Building zip…" : "Download PDFs"}
+              </Button>
+            </div>
+            <p className="mt-3 text-[11px] text-slate-500">
+              Sorted into year/grade folders, with a manifest listing every file.
+              Large curricula may take a moment to compress.
+            </p>
           </CardBody>
         </Card>
 

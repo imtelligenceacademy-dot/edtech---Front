@@ -129,6 +129,33 @@ export async function downloadDatabase(retried = false): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+// Downloads a zip of every stored lesson/ICT-Fair PDF. The DB backup holds only
+// metadata and paths, so this is the companion needed for a full restore.
+export async function downloadFilesArchive(retried = false): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/admin/db/files-archive`, {
+    credentials: "include",
+    headers: withAuthHeaders(),
+  });
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return downloadFilesArchive(true);
+  }
+  if (!res.ok) throw new Error("Could not build the PDF archive.");
+
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+  const filename = m ? decodeURIComponent(m[1]) : "im-telligence-lesson-pdfs.zip";
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function emailDatabase(recipients: string[], note?: string) {
   return apiFetch<{ message: string }>("/api/admin/db/email", {
     method: "POST",
