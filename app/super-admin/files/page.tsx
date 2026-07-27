@@ -67,9 +67,23 @@ export default function FilesPage() {
   const [fairMessage, setFairMessage] = useState<string | null>(null);
   const fairInputRef = useRef<HTMLInputElement>(null);
 
-  // File pending deletion confirmation.
+  // File pending single-deletion confirmation.
   const [deletingFile, setDeletingFile] = useState<UploadedFile | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Bulk selection for multi-delete.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  function toggleSelect(id: string) {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function refresh() {
     const [fileRows, lessonRows, fairRows] = await Promise.all([
@@ -140,6 +154,30 @@ export default function FilesPage() {
     }
     return { byYear, unsorted };
   }, [files, lessons]);
+
+  // Bulk selection covers every lesson PDF (fair projects have their own list).
+  const allFileIds = files.map((f) => f.id);
+  const allSelected = allFileIds.length > 0 && allFileIds.every((id) => selected.has(id));
+  const selectedCount = allFileIds.filter((id) => selected.has(id)).length;
+
+  function toggleSelectAll() {
+    setSelected(allSelected ? new Set() : new Set(allFileIds));
+  }
+
+  async function confirmBulkDelete() {
+    setBulkBusy(true);
+    try {
+      // Sequential; siblings of an already-deleted lesson 404, which we ignore.
+      for (const id of Array.from(selected)) {
+        await deleteUploadedFile(id).catch(() => undefined);
+      }
+      await refresh();
+      setSelected(new Set());
+      setBulkConfirm(false);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function handleFiles(fileList?: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -223,11 +261,22 @@ export default function FilesPage() {
       : "text-slate-600";
 
   function fileRow(f: UploadedFile) {
+    const checked = selected.has(f.id);
     return (
       <div
         key={f.id}
-        className="flex items-center gap-2 rounded-lg border border-slate-100 px-3 py-2"
+        className={cn(
+          "flex items-center gap-2 rounded-lg border px-3 py-2",
+          checked ? "border-brand/40 bg-brand-50/50" : "border-slate-100"
+        )}
       >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => toggleSelect(f.id)}
+          aria-label={`Select ${f.filename}`}
+          className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand focus:ring-brand"
+        />
         <FileText size={14} className="shrink-0 text-slate-400" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
           {f.filename}
@@ -382,6 +431,46 @@ export default function FilesPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* Bulk selection toolbar */}
+      {allFileIds.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedCount > 0 && !allSelected;
+              }}
+              onChange={toggleSelectAll}
+              className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+            />
+            Select all
+          </label>
+          <span className="text-xs text-slate-500">
+            {selectedCount} of {allFileIds.length} selected
+          </span>
+          {selectedCount > 0 && (
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-xs text-slate-500 hover:text-slate-800"
+            >
+              Clear
+            </button>
+          )}
+          <div className="ml-auto">
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={selectedCount === 0}
+              onClick={() => setBulkConfirm(true)}
+            >
+              <Trash2 size={13} /> Delete selected
+              {selectedCount > 0 ? ` (${selectedCount})` : ""}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Year and grade folders */}
       <div className="space-y-3">
@@ -613,6 +702,29 @@ export default function FilesPage() {
           <span className="font-medium text-slate-900">{deletingFile?.filename}</span>? This removes
           the lesson from every teacher and Access Control, along with their progress on it. This
           cannot be undone.
+        </p>
+      </Modal>
+
+      {/* Bulk delete confirmation */}
+      <Modal
+        open={bulkConfirm}
+        onClose={() => setBulkConfirm(false)}
+        title="Delete selected lessons"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setBulkConfirm(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmBulkDelete} disabled={bulkBusy}>
+              {bulkBusy ? "Deleting…" : `Delete ${selectedCount}`}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete <span className="font-medium text-slate-900">{selectedCount}</span> selected
+          lesson{selectedCount === 1 ? "" : "s"}? Each is removed from every teacher and Access
+          Control, along with their progress. This cannot be undone.
         </p>
       </Modal>
     </>
