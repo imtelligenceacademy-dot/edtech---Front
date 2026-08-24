@@ -739,8 +739,9 @@ export function Chatbot() {
           )}
         </div>
 
-        {/* Composer — hidden in ICT Fair mode (view-only, no chat) */}
-        {!showFairProjects && (
+        {/* Composer — hidden on the grade gate (the assistant isn't usable
+            until a grade is picked) and in ICT Fair mode (view-only, no chat) */}
+        {!showFairProjects && selectedGrade !== null && (
         <div
           className={cn(
             "border-t px-4 py-4 backdrop-blur-xl sm:px-8",
@@ -762,7 +763,6 @@ export function Chatbot() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                disabled={selectedGrade === null && !showFairProjects}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -770,13 +770,7 @@ export function Chatbot() {
                   }
                 }}
                 rows={1}
-                placeholder={
-                  showFairProjects
-                    ? "Open an ICT project above..."
-                    : selectedGrade === null
-                    ? "Choose a grade above to begin…"
-                    : "Message IM-Telligence AI…"
-                }
+                placeholder="Message IM-Telligence AI…"
                 className={cn(
                   "max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm focus:outline-none disabled:cursor-not-allowed",
                   light
@@ -786,7 +780,7 @@ export function Chatbot() {
               />
               <button
                 onClick={() => send()}
-                disabled={!input.trim() || (selectedGrade === null && !showFairProjects)}
+                disabled={!input.trim()}
                 className={cn(
                   "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition",
                   input.trim()
@@ -831,14 +825,17 @@ export function Chatbot() {
         )}
       </div>
 
-      {/* Lesson rail — quick actions for the lesson in play. Hidden while the
-          viewer pane is open (the viewer already offers these) so the PDF and
-          chat get the full width. */}
+      {/* Lesson rail — quick actions for the lesson in play. Hidden on the
+          grade gate (there is no lesson yet) and while the viewer pane is open
+          (the viewer already offers these) so the PDF and chat get the full
+          width. */}
       <aside
         className={cn(
           "relative z-10 hidden w-80 shrink-0 flex-col border-l backdrop-blur-xl",
           light ? "border-slate-200/60 bg-white/40" : "border-white/5 bg-slate-950/40",
-          openedLesson || showFairProjects ? "" : "xl:flex"
+          openedLesson || showFairProjects || selectedGrade === null
+            ? ""
+            : "xl:flex"
         )}
       >
         <div
