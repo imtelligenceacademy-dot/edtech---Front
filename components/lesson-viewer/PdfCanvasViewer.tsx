@@ -30,6 +30,7 @@ export function PdfCanvasViewer({
   accessStatus,
   onExit,
   onCompleted,
+  onSlideChange,
 }: {
   fileId: string;
   lessonId?: string;
@@ -37,6 +38,8 @@ export function PdfCanvasViewer({
   accessStatus?: string | null;
   onExit?: () => void; // return to the lesson list
   onCompleted?: () => void; // fired after the lesson is marked complete
+  // Reports the slide currently in view, so the AI can be asked about it.
+  onSlideChange?: (slide: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
@@ -62,6 +65,15 @@ export function PdfCanvasViewer({
   const [errorMessage, setErrorMessage] = useState("Could not load this lesson PDF.");
 
   const effScale = +(fitScale * zoom).toFixed(3);
+
+  // Report the slide in view upward so the AI can be asked about that exact
+  // page. Held in a ref so an inline parent callback changing identity every
+  // render cannot re-trigger this effect (and loop).
+  const onSlideChangeRef = useRef(onSlideChange);
+  onSlideChangeRef.current = onSlideChange;
+  useEffect(() => {
+    if (status === "ready") onSlideChangeRef.current?.(current);
+  }, [current, status]);
 
   useEffect(() => {
     const detect = () => {

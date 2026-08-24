@@ -208,6 +208,9 @@ export function Chatbot() {
   const [report, setReport] = useState<ReportEntry[]>([]);
   const [openedLesson, setOpenedLesson] = useState<Lesson | null>(null);
   const [openedSlide, setOpenedSlide] = useState(1);
+  // The PDF page currently visible in the viewer. Sent with each question so the
+  // assistant can inspect that exact slide. Desktop only; null = no visual context.
+  const [viewedSlide, setViewedSlide] = useState<number | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lessonsLoaded, setLessonsLoaded] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
@@ -300,6 +303,7 @@ export function Chatbot() {
         {
           message: text,
           lessonId: openedLesson?.id ?? null,
+          currentSlide: viewedSlide,
           history,
         },
         {
@@ -338,9 +342,17 @@ export function Chatbot() {
       if (!started) {
         pushAssistant("I didn't get a response. Please try again.");
       }
-    } catch {
+    } catch (err) {
+      // The backend sends a specific, already-safe reason (usage limit reached,
+      // provider unavailable, timed out...). Prefer it over a generic line so the
+      // teacher knows whether to retry now, wait, or ask an administrator.
+      const reason = err instanceof Error ? err.message.trim() : "";
+      const isNetwork =
+        !reason || /failed to fetch|networkerror|load failed/i.test(reason);
       pushAssistant(
-        "I couldn't reach the assistant just now. Please try again in a moment."
+        isNetwork
+          ? "I couldn't reach the assistant. Please check your connection and try again."
+          : reason
       );
     } finally {
       setThinking(false);
@@ -387,6 +399,7 @@ export function Chatbot() {
     setShowFairProjects(false);
     setOpenedLesson(lesson);
     setOpenedSlide(1);
+    setViewedSlide(null);
     const mobilePdf = Boolean(lesson.fileId) && isMobileViewport();
     if (mobilePdf) {
       setFullscreenLesson(lesson);
@@ -545,6 +558,7 @@ export function Chatbot() {
     setInput("");
     setThinking(false);
     setOpenedLesson(null);
+    setViewedSlide(null);
     setFullscreenLesson(null);
     setShowFairProjects(false);
     setSelectedGrade(null);
@@ -601,10 +615,12 @@ export function Chatbot() {
           }
           onClose={() => {
             setOpenedLesson(null);
+            setViewedSlide(null);
             refreshLessons();
           }}
           onFullscreen={() => setFullscreenLesson(openedLesson)}
           onCompleted={refreshLessons}
+          onSlideChange={setViewedSlide}
           light={light}
         />
       )}
@@ -1476,6 +1492,7 @@ function LessonPane({
   onClose,
   onFullscreen,
   onCompleted,
+  onSlideChange,
   light,
 }: {
   lesson: Lesson;
@@ -1485,6 +1502,7 @@ function LessonPane({
   onClose: () => void;
   onFullscreen: () => void;
   onCompleted?: () => void;
+  onSlideChange?: (slide: number) => void;
   light: boolean;
 }) {
   const isPdf = Boolean(lesson.fileId);
@@ -1578,6 +1596,7 @@ function LessonPane({
             accessStatus={lesson.accessStatus}
             onExit={onClose}
             onCompleted={onCompleted}
+            onSlideChange={onSlideChange}
           />
         </div>
       ) : (

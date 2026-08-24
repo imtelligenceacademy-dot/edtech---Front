@@ -384,6 +384,8 @@ export type AIChatTurn = { role: "user" | "assistant"; content: string };
 export function askTeacherAI(payload: {
   message: string;
   lessonId?: string | null;
+  fairProjectId?: string | null;
+  currentSlide?: number | null;
   history?: AIChatTurn[];
 }) {
   return apiFetch<{ content: string; sourceRef: string | null; provider: string }>(
@@ -468,6 +470,9 @@ export function streamTeacherAI(
   payload: {
     message: string;
     lessonId?: string | null;
+    fairProjectId?: string | null;
+    // 1-based slide the teacher is viewing, so the assistant can inspect it.
+    currentSlide?: number | null;
     history?: AIChatTurn[];
   },
   handlers: StreamHandlers
