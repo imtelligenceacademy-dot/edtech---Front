@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowUp,
   Plus,
-  FileText,
   CheckCircle2,
-  HelpCircle,
   Bot,
   User as UserIcon,
   ChevronLeft,
@@ -37,13 +35,6 @@ import {
 } from "@/lib/api";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import type { AIMessage, FairProject, Lesson, Session } from "@/types";
-
-type ReportEntry = {
-  id: string;
-  kind: "lesson" | "question";
-  summary: string;
-  at: string;
-};
 
 
 // Maps "first/second/…", "one/two/…", "1st/2nd/…" to a lesson number.
@@ -205,12 +196,14 @@ export function Chatbot() {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
-  const [report, setReport] = useState<ReportEntry[]>([]);
   const [openedLesson, setOpenedLesson] = useState<Lesson | null>(null);
   const [openedSlide, setOpenedSlide] = useState(1);
   // The PDF page currently visible in the viewer. Sent with each question so the
   // assistant can inspect that exact slide. Desktop only; null = no visual context.
   const [viewedSlide, setViewedSlide] = useState<number | null>(null);
+  // The last lesson opened this session. Kept after the pane is closed so the
+  // side panel can offer to bring it back.
+  const [lastLesson, setLastLesson] = useState<Lesson | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lessonsLoaded, setLessonsLoaded] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
@@ -282,13 +275,6 @@ export function Chatbot() {
     ]);
   }
 
-  function logReport(entry: Omit<ReportEntry, "id" | "at">) {
-    setReport((prev) => [
-      ...prev,
-      { ...entry, id: `r_${Date.now()}`, at: new Date().toISOString() },
-    ]);
-  }
-
   async function answerQuestion(text: string) {
     // Prior turns become the conversation history; the backend appends `text`.
     const history = messages
@@ -357,10 +343,6 @@ export function Chatbot() {
     } finally {
       setThinking(false);
     }
-    logReport({
-      kind: "question",
-      summary: `Q&A — "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`,
-    });
   }
 
   // Re-pull lesson access state (statuses shift after a completion/unlock).
@@ -390,14 +372,11 @@ export function Chatbot() {
     // Sequential unlocking — a teacher can only open their current lesson.
     if (lesson.accessStatus && lesson.accessStatus !== "available") {
       pushAssistant(lessonLockMessage(lesson), { sourceRef: lesson.title });
-      logReport({
-        kind: "lesson",
-        summary: `Blocked — "${lesson.title}" is ${lesson.accessStatus}.`,
-      });
       return;
     }
     setShowFairProjects(false);
     setOpenedLesson(lesson);
+    setLastLesson(lesson);
     setOpenedSlide(1);
     setViewedSlide(null);
     const mobilePdf = Boolean(lesson.fileId) && isMobileViewport();
@@ -411,10 +390,6 @@ export function Chatbot() {
       : `${lesson.slides.length} slides. The deck is open on the left; ask me anything about a slide and I'll explain it here.`;
     pushAssistant(`Opening "${lesson.title}" — Grade ${lesson.grade}. ${detail}`, {
       sourceRef: lesson.title,
-    });
-    logReport({
-      kind: "lesson",
-      summary: `Opened lesson "${lesson.title}" (Grade ${lesson.grade}).`,
     });
   }
 
@@ -436,7 +411,6 @@ export function Chatbot() {
         `Nice work — I've marked "${lesson.title}" as complete. Your next lesson unlocks after the waiting period; say "open the next lesson" and I'll open it once it's available.`,
         { sourceRef: lesson.title }
       );
-      logReport({ kind: "lesson", summary: `Marked "${lesson.title}" complete.` });
     } catch {
       pushAssistant(
         `I couldn't mark "${lesson.title}" complete just now. You can also use the "Mark complete" button on the lesson. Please try again in a moment.`
@@ -525,6 +499,13 @@ export function Chatbot() {
 
   const isEmpty = messages.length === 0;
 
+  // The lesson the side panel acts on: whatever is open, else the last one
+  // opened - resolved against `lessons` so its access status stays current.
+  const panelTarget = openedLesson ?? lastLesson;
+  const panelLesson = panelTarget
+    ? lessons.find((l) => l.id === panelTarget.id) ?? panelTarget
+    : null;
+
   // Grades the teacher actually has lessons for, and the lessons in the chosen one.
   const availableGrades = Array.from(new Set(lessons.map((l) => l.grade))).sort(
     (a, b) => a - b
@@ -536,6 +517,7 @@ export function Chatbot() {
     setShowFairProjects(false);
     setSelectedGrade(grade);
     setOpenedLesson(null);
+    setLastLesson(null);
   }
 
   // Enter ICT Fair mode: show the project grid in the main area.
@@ -551,14 +533,30 @@ export function Chatbot() {
     setFairViewer(project);
   }
 
+  // Bring the lesson viewer back after it was closed. If the lesson is still
+  // available we restore it silently; otherwise we route through openLesson so
+  // the teacher gets the proper explanation (completed / waiting / locked).
+  function reopenLesson() {
+    const target = openedLesson ?? lastLesson;
+    if (!target) return;
+    // Prefer the freshest copy - access status shifts as lessons complete.
+    const fresh = lessons.find((l) => l.id === target.id) ?? target;
+    if ((fresh.accessStatus ?? "available") !== "available") {
+      openLesson(fresh);
+      return;
+    }
+    setShowFairProjects(false);
+    setOpenedLesson(fresh);
+  }
+
   // Return to the clean starting screen (grade picker) with an empty session.
   function resetSession() {
     setMessages([]);
-    setReport([]);
     setInput("");
     setThinking(false);
     setOpenedLesson(null);
     setViewedSlide(null);
+    setLastLesson(null);
     setFullscreenLesson(null);
     setShowFairProjects(false);
     setSelectedGrade(null);
@@ -833,7 +831,9 @@ export function Chatbot() {
         )}
       </div>
 
-      {/* Report rail — hidden while a lesson is open so the viewer + chat get the space */}
+      {/* Lesson rail — quick actions for the lesson in play. Hidden while the
+          viewer pane is open (the viewer already offers these) so the PDF and
+          chat get the full width. */}
       <aside
         className={cn(
           "relative z-10 hidden w-80 shrink-0 flex-col border-l backdrop-blur-xl",
@@ -847,53 +847,123 @@ export function Chatbot() {
             light ? "border-slate-200/60" : "border-white/5"
           )}
         >
-          <FileText size={14} className={light ? "text-slate-500" : "text-slate-400"} />
+          <Presentation size={14} className={light ? "text-slate-500" : "text-slate-400"} />
           <p className={cn("text-sm font-semibold", light ? "text-slate-900" : "text-white")}>
-            Session report
+            Your lesson
           </p>
-          <span
-            className={cn(
-              "ml-auto rounded-full px-2 py-0.5 text-[10px]",
-              light ? "bg-slate-200/60 text-slate-600" : "bg-white/5 text-slate-400"
-            )}
-          >
-            {report.length}
-          </span>
         </div>
-        <div className="chat-scroll min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
-          {report.length === 0 ? (
-            <p className={cn("px-1 text-xs", light ? "text-slate-500" : "text-slate-500")}>
-              Each lesson action and Q&A will appear here, in real time.
-            </p>
-          ) : (
-            report.map((r) => (
-              <div
-                key={r.id}
+
+        <div className="chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          {panelLesson ? (
+            <div
+              className={cn(
+                "rounded-xl border p-3",
+                light ? "border-slate-200 bg-white/70" : "border-white/5 bg-white/5"
+              )}
+            >
+              <p
                 className={cn(
-                  "rounded-xl border px-3 py-2.5 backdrop-blur",
-                  light ? "border-slate-200 bg-white/70" : "border-white/5 bg-white/5"
+                  "text-sm font-medium leading-snug",
+                  light ? "text-slate-900" : "text-white"
                 )}
               >
-                <div className="mb-1 flex items-center gap-1.5">
-                  {r.kind === "lesson" ? (
-                    <FileText size={11} className={light ? "text-brand-600" : "text-brand-300"} />
-                  ) : (
-                    <HelpCircle size={11} className={light ? "text-brand-600" : "text-brand-300"} />
+                {panelLesson.title}
+              </p>
+              <p className={cn("mt-0.5 text-[11px]", light ? "text-slate-500" : "text-slate-400")}>
+                Grade {panelLesson.grade}
+                {panelLesson.course ? ` · ${courseLabel(panelLesson.course)}` : ""}
+                {viewedSlide ? ` · slide ${viewedSlide}` : ""}
+              </p>
+
+              <div className="mt-3 space-y-1.5">
+                <button
+                  onClick={reopenLesson}
+                  className="flex w-full items-center gap-2 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3 py-2 text-xs font-medium text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
+                >
+                  <Presentation size={13} /> Reopen lesson
+                </button>
+                <button
+                  onClick={() => setFullscreenLesson(panelLesson)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition",
+                    light
+                      ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
                   )}
-                  <span
+                >
+                  <Maximize2 size={13} /> Full screen
+                </button>
+                {(panelLesson.accessStatus ?? "available") === "completed" && (
+                  <p
                     className={cn(
-                      "text-[10px] font-medium uppercase tracking-wider",
-                      light ? "text-slate-500" : "text-slate-400"
+                      "flex items-center gap-1.5 px-1 pt-1 text-[11px]",
+                      light ? "text-emerald-600" : "text-emerald-400"
                     )}
                   >
-                    {r.kind === "lesson" ? "Lesson" : "Question"}
-                  </span>
-                </div>
-                <p className={cn("text-xs leading-snug", light ? "text-slate-700" : "text-slate-200")}>
-                  {r.summary}
-                </p>
+                    <CheckCircle2 size={12} /> Completed
+                  </p>
+                )}
               </div>
-            ))
+            </div>
+          ) : (
+            <p className={cn("px-1 text-xs", light ? "text-slate-500" : "text-slate-500")}>
+              Open a lesson and it will appear here, so you can bring it back at
+              any time.
+            </p>
+          )}
+
+          {/* Jump straight to any other lesson without leaving the chat. */}
+          {gradeLessons.length > 0 && (
+            <div>
+              <p
+                className={cn(
+                  "mb-1.5 px-1 text-[10px] font-medium uppercase tracking-wider",
+                  light ? "text-slate-400" : "text-slate-500"
+                )}
+              >
+                All lessons
+              </p>
+              <div className="space-y-1">
+                {[...gradeLessons].sort(byLessonNo).map((l) => {
+                  const status = l.accessStatus ?? "available";
+                  const isOpen = panelLesson?.id === l.id;
+                  return (
+                    <button
+                      key={l.id}
+                      onClick={() => openLesson(l)}
+                      title={l.title}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[11px] transition",
+                        isOpen
+                          ? "border-brand/40 bg-brand-50/60"
+                          : light
+                          ? "border-transparent hover:border-slate-200 hover:bg-white/70"
+                          : "border-transparent hover:border-white/10 hover:bg-white/5"
+                      )}
+                    >
+                      {status === "completed" ? (
+                        <CheckCircle2 size={12} className="shrink-0 text-emerald-500" />
+                      ) : status === "waiting" ? (
+                        <Clock size={12} className="shrink-0 text-amber-500" />
+                      ) : status === "locked" ? (
+                        <Lock size={12} className="shrink-0 text-slate-400" />
+                      ) : (
+                        <Presentation size={12} className="shrink-0 text-brand-600" />
+                      )}
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate",
+                          light ? "text-slate-700" : "text-slate-200",
+                          status !== "available" && "opacity-70"
+                        )}
+                      >
+                        {l.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       </aside>
