@@ -325,6 +325,13 @@ export function listLessons() {
   return apiFetch<Lesson[]>("/api/lessons");
 }
 
+// One lesson. For a teacher the API refuses anything not assigned to them or
+// not currently available, so this doubles as the access check for the
+// second-screen presenter window.
+export function getLesson(lessonId: string) {
+  return apiFetch<Lesson>(`/api/lessons/${lessonId}`);
+}
+
 // Fully delete a lesson (its PDFs, assignments, progress, access requests).
 export function deleteLesson(lessonId: string) {
   return apiFetch<void>(`/api/lessons/${lessonId}`, { method: "DELETE" });

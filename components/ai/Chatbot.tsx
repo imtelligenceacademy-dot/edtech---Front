@@ -30,6 +30,9 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Sparkles,
+  Monitor,
+  MonitorX,
+  BookmarkCheck,
 } from "lucide-react";
 import { cn, initials, stripMarkdown } from "@/lib/utils";
 import {
@@ -49,6 +52,8 @@ import {
   TEACHER_FAIR,
   TEACHER_HOME,
 } from "@/lib/teacher-routes";
+import { openPresentChannel, type PresentChannel } from "@/lib/present-channel";
+import { openPresenterWindow, placeOnExternalScreen } from "@/lib/window-placement";
 import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/types";
 
 // The chat lives in one browser tab for a whole class. A stray refresh used to
@@ -311,6 +316,19 @@ export function Chatbot({
   // away entirely for full-width presenting.
   const [paneWidth, setPaneWidth] = useState(60);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  // Presenting: the lesson page is on the classroom's second screen and this
+  // window keeps the assistant. `page` is what the class is looking at.
+  const [presenting, setPresenting] = useState<{
+    lesson: Lesson;
+    page: number;
+    total: number;
+  } | null>(null);
+  const [presentBlocked, setPresentBlocked] = useState(false);
+  const presentingRef = useRef<typeof presenting>(null);
+  presentingRef.current = presenting;
+  const presentWinRef = useRef<Window | null>(null);
+  const presentChannelRef = useRef<PresentChannel | null>(null);
+  const byeTimerRef = useRef<number | null>(null);
   // Gate the "save" effect until the previous session has been restored, so an
   // empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
@@ -794,6 +812,130 @@ export function Chatbot({
     setOpenedLesson(fresh);
   }
 
+  // --- Presenting on the classroom screen -------------------------------- #
+
+  // Open the lesson on the second display. The window has to be opened inside
+  // this click or the browser blocks it, so placement happens afterwards.
+  function startPresenting(lesson: Lesson) {
+    if (!lesson.fileId) return;
+    const { win } = openPresenterWindow(`/teacher/present/${lesson.id}`);
+    if (!win) {
+      setPresentBlocked(true);
+      return;
+    }
+    setPresentBlocked(false);
+    presentWinRef.current = win;
+
+    const channel = openPresentChannel(lesson.id, (message) => {
+      // A "bye" is treated as tentative: reloading the projected window sends
+      // one before the new document announces itself, and that shouldn't look
+      // like the teacher shut the projector down.
+      if (message.type === "hello" || message.type === "ready") {
+        if (byeTimerRef.current !== null) {
+          window.clearTimeout(byeTimerRef.current);
+          byeTimerRef.current = null;
+        }
+      }
+      if (message.type === "hello") {
+        channel.post({ type: "page", page: presentingRef.current?.page ?? 1 });
+      }
+      if (message.type === "ready") {
+        setPresenting((prev) => (prev ? { ...prev, total: message.total } : prev));
+      }
+      if (message.type === "bye") {
+        byeTimerRef.current = window.setTimeout(() => {
+          byeTimerRef.current = null;
+          stopPresenting(false);
+        }, 700);
+      }
+    });
+    presentChannelRef.current = channel;
+
+    setPresenting({ lesson, page: 1, total: 0 });
+    setViewedSlide(1);
+    // The PDF lives on the projector now; this window is the assistant.
+    setOpenedLesson(null);
+    setLastLesson(lesson);
+    setChatCollapsed(false);
+    void placeOnExternalScreen(win);
+    pushAssistant(
+      `"${lesson.title}" is on your second screen. Use the bar below to change the page — the class only ever sees the lesson, never this chat.`,
+      { sourceRef: lesson.title }
+    );
+  }
+
+  function stopPresenting(closeWindow = true) {
+    if (byeTimerRef.current !== null) {
+      window.clearTimeout(byeTimerRef.current);
+      byeTimerRef.current = null;
+    }
+    if (closeWindow) {
+      presentChannelRef.current?.post({ type: "stop" });
+      try {
+        presentWinRef.current?.close();
+      } catch {
+        /* already gone */
+      }
+    }
+    presentChannelRef.current?.close();
+    presentChannelRef.current = null;
+    presentWinRef.current = null;
+    setPresenting(null);
+    setViewedSlide(null);
+    refreshLessons();
+  }
+
+  // The class follows this window: every page change is pushed to the projector
+  // and becomes the slide the assistant is asked about.
+  function goToPage(next: number) {
+    const current = presentingRef.current;
+    if (!current) return;
+    const max = current.total || Number.MAX_SAFE_INTEGER;
+    const page = Math.min(Math.max(1, next), max);
+    if (page === current.page) return;
+    presentChannelRef.current?.post({ type: "page", page });
+    setPresenting({ ...current, page });
+    setViewedSlide(page);
+  }
+
+  // Arrow / page keys drive the projector, unless the teacher is typing.
+  useEffect(() => {
+    if (!presenting) return;
+    function onKey(e: KeyboardEvent) {
+      const tag = document.activeElement?.tagName;
+      if (tag === "TEXTAREA" || tag === "INPUT") return;
+      const page = presentingRef.current?.page ?? 1;
+      if (e.key === "ArrowRight" || e.key === "PageDown") {
+        e.preventDefault();
+        goToPage(page + 1);
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        goToPage(page - 1);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenting]);
+
+  // Never leave a projector showing a lesson this window has walked away from.
+  useEffect(() => {
+    function closePresenter() {
+      presentChannelRef.current?.post({ type: "stop" });
+      try {
+        presentWinRef.current?.close();
+      } catch {
+        /* already gone */
+      }
+    }
+    window.addEventListener("beforeunload", closePresenter);
+    return () => {
+      window.removeEventListener("beforeunload", closePresenter);
+      closePresenter();
+      presentChannelRef.current?.close();
+    };
+  }, []);
+
   // Drag the divider between the lesson viewer and the chat.
   function startPaneDrag(e: React.MouseEvent) {
     e.preventDefault();
@@ -890,6 +1032,7 @@ export function Chatbot({
             refreshLessons();
           }}
           onFullscreen={() => setFullscreenLesson(openedLesson)}
+          onPresent={() => startPresenting(openedLesson)}
           onCompleted={refreshLessons}
           onSlideChange={setViewedSlide}
           light={light}
@@ -1051,6 +1194,28 @@ export function Chatbot({
             </div>
           )}
         </div>
+
+        {/* Presenting: the class sees the page, the teacher drives it from here */}
+        {presenting && (
+          <PresentingBar
+            lesson={presenting.lesson}
+            page={presenting.page}
+            total={presenting.total}
+            onPrev={() => goToPage(presenting.page - 1)}
+            onNext={() => goToPage(presenting.page + 1)}
+            onStop={() => stopPresenting()}
+            onCompleted={() => {
+              stopPresenting();
+            }}
+            light={light}
+          />
+        )}
+        {presentBlocked && (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] text-amber-800 sm:px-8">
+            Your browser blocked the presentation window. Allow pop-ups for this
+            site, then press Present again.
+          </div>
+        )}
 
         {/* Reading back through the transcript while a reply streams in */}
         {!atBottom && messages.length > 0 && (
@@ -1220,6 +1385,19 @@ export function Chatbot({
                 >
                   <Presentation size={13} /> Reopen lesson
                 </button>
+                {panelLesson.fileId && !presenting && (
+                  <button
+                    onClick={() => startPresenting(panelLesson)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition",
+                      light
+                        ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                    )}
+                  >
+                    <Monitor size={13} /> Present on second screen
+                  </button>
+                )}
                 <button
                   onClick={() => setFullscreenLesson(panelLesson)}
                   className={cn(
@@ -2125,6 +2303,172 @@ function UserMenu({
   );
 }
 
+// Controls for the lesson showing on the classroom screen. Everything the
+// teacher needs while presenting lives here, so they never have to look at the
+// projected window — which is exactly what keeps the assistant private.
+function PresentingBar({
+  lesson,
+  page,
+  total,
+  onPrev,
+  onNext,
+  onStop,
+  onCompleted,
+  light,
+}: {
+  lesson: Lesson;
+  page: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onStop: () => void;
+  onCompleted: () => void;
+  light: boolean;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [confirmingComplete, setConfirmingComplete] = useState(false);
+
+  // Only this window writes progress — the projected one has no lesson id and
+  // cannot save, so there is never a double count.
+  async function save(complete: boolean) {
+    setSaving(true);
+    setSaved(null);
+    try {
+      await saveLessonProgress(
+        lesson.id,
+        complete ? { complete: true, total } : { slide: page, total }
+      );
+      setSaved(complete ? "Marked complete" : `Saved — page ${page}`);
+      if (complete) onCompleted();
+    } catch {
+      setSaved("Couldn't save just now.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 border-t px-4 py-2.5 text-[11px] sm:px-8",
+        light ? "border-slate-200/60 bg-white/60" : "border-white/5 bg-slate-950/40"
+      )}
+    >
+      <span className="flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 font-medium text-brand-700">
+        <Monitor size={12} /> On the classroom screen
+      </span>
+
+      <div className="flex items-center gap-1">
+        <button
+          onClick={onPrev}
+          disabled={page <= 1}
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-40",
+            light ? "border-slate-200 bg-white text-slate-700" : "border-white/10 text-slate-200"
+          )}
+          aria-label="Previous page"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        <span
+          className={cn(
+            "w-24 text-center tabular-nums",
+            light ? "text-slate-600" : "text-slate-300"
+          )}
+        >
+          Page {page}
+          {total ? ` of ${total}` : ""}
+        </span>
+        <button
+          onClick={onNext}
+          disabled={Boolean(total) && page >= total}
+          className={cn(
+            "flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-40",
+            light ? "border-slate-200 bg-white text-slate-700" : "border-white/10 text-slate-200"
+          )}
+          aria-label="Next page"
+        >
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {saved && (
+        <span
+          className={cn(
+            "flex items-center gap-1",
+            saved.startsWith("Couldn't") ? "text-red-500" : "text-emerald-600"
+          )}
+        >
+          <Check size={12} /> {saved}
+        </span>
+      )}
+
+      <div className="ml-auto flex items-center gap-2">
+        {confirmingComplete ? (
+          <>
+            <span className={light ? "text-slate-600" : "text-slate-300"}>
+              Finish this lesson? It locks and the next one starts its wait.
+            </span>
+            <button
+              onClick={() => setConfirmingComplete(false)}
+              disabled={saving}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 transition",
+                light ? "border-slate-200 bg-white text-slate-700" : "border-white/10 text-slate-200"
+              )}
+            >
+              Not yet
+            </button>
+            <button
+              onClick={() => {
+                setConfirmingComplete(false);
+                void save(true);
+              }}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3 py-1.5 font-medium text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
+            >
+              <Check size={13} /> {saving ? "Saving..." : "Yes, complete it"}
+            </button>
+          </>
+        ) : (
+          <>
+            <span className={cn("hidden lg:inline", light ? "text-slate-400" : "text-slate-500")}>
+              Screens must be set to Extend (Win + P), not Duplicate
+            </span>
+            <button
+              onClick={() => save(false)}
+              disabled={saving}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition",
+                light ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "border-white/10 text-slate-200 hover:bg-white/10"
+              )}
+            >
+              <BookmarkCheck size={13} /> Save progress
+            </button>
+            <button
+              onClick={() => setConfirmingComplete(true)}
+              disabled={saving}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition",
+                light ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50" : "border-white/10 text-slate-200 hover:bg-white/10"
+              )}
+            >
+              <Check size={13} /> Mark complete
+            </button>
+            <button
+              onClick={onStop}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 font-medium text-white transition hover:bg-slate-700"
+            >
+              <MonitorX size={13} /> Stop presenting
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TypingIndicator({ light }: { light: boolean }) {
   return (
     <div className="msg-in flex gap-3">
@@ -2170,6 +2514,7 @@ function LessonPane({
   onNext,
   onClose,
   onFullscreen,
+  onPresent,
   onCompleted,
   onSlideChange,
   light,
@@ -2183,6 +2528,7 @@ function LessonPane({
   onNext: () => void;
   onClose: () => void;
   onFullscreen: () => void;
+  onPresent: () => void;
   onCompleted?: () => void;
   onSlideChange?: (slide: number) => void;
   light: boolean;
@@ -2240,6 +2586,21 @@ function LessonPane({
           >
             {current} / {total}
           </span>
+        )}
+        {isPdf && (
+          <button
+            onClick={onPresent}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition",
+              light
+                ? "border-slate-200 bg-white/70 text-slate-700 hover:bg-white"
+                : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+            )}
+            aria-label="Present on the second screen"
+            title="Show this lesson on the classroom screen — the chat stays here"
+          >
+            <Monitor size={13} /> Present
+          </button>
         )}
         {isPdf && (
           <button

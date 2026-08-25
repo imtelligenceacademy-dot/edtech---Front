@@ -11,9 +11,9 @@ import {
   ArrowLeft,
   ExternalLink,
 } from "lucide-react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
 import { fetchLessonPdf, saveLessonProgress } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useBlockSaveShortcuts, useLessonPdf } from "./useLessonPdf";
 
 // In-app PDF viewer (PDF.js → canvas): no browser toolbar (no download/print/
 // save), right-click + Ctrl+S/P blocked. Also tracks the slide the teacher has
@@ -42,19 +42,13 @@ export function PdfCanvasViewer({
   onSlideChange?: (slide: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const docRef = useRef<PDFDocumentProxy | null>(null);
-  // Intrinsic page sizes (viewport at scale 1) so we can size placeholders and
-  // compute a fit-to-width scale without rendering every page.
-  const dimsRef = useRef<Array<{ width: number; height: number }>>([]);
   const wrappersRef = useRef<HTMLDivElement[]>([]);
   const renderedRef = useRef<Set<number>>(new Set());
   const ratiosRef = useRef<Map<number, number>>(new Map());
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   // fitScale = base scale that makes a page fill the container width.
   // zoom = user multiplier on top of that. Effective scale = fitScale * zoom.
   const [fitScale, setFitScale] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [total, setTotal] = useState(0);
   const [current, setCurrent] = useState(1);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -65,7 +59,15 @@ export function PdfCanvasViewer({
   const [useNativeMobileViewer, setUseNativeMobileViewer] = useState(false);
   const [nativeUrl, setNativeUrl] = useState<string | null>(null);
   const [nativeStatus, setNativeStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [errorMessage, setErrorMessage] = useState("Could not load this lesson PDF.");
+  const [nativeError, setNativeError] = useState("Could not load this lesson PDF.");
+
+  // The document itself, loaded and measured once (skipped when the phone's own
+  // PDF app is doing the rendering).
+  const { docRef, dimsRef, total, status, errorMessage: loadError } = useLessonPdf(
+    fileId,
+    !useNativeMobileViewer
+  );
+  const errorMessage = useNativeMobileViewer ? nativeError : loadError;
 
   const effScale = +(fitScale * zoom).toFixed(3);
 
@@ -109,7 +111,7 @@ export function PdfCanvasViewer({
         setNativeStatus("ready");
       } catch (err) {
         if (!cancelled) {
-          setErrorMessage(err instanceof Error ? err.message : "Could not load this lesson PDF.");
+          setNativeError(err instanceof Error ? err.message : "Could not load this lesson PDF.");
           setNativeStatus("error");
         }
       }
@@ -117,45 +119,6 @@ export function PdfCanvasViewer({
     return () => {
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
-    };
-  }, [fileId, useNativeMobileViewer]);
-
-  // Load the document and pre-measure every page (light; no rendering).
-  useEffect(() => {
-    if (useNativeMobileViewer) return;
-    let cancelled = false;
-    setStatus("loading");
-    (async () => {
-      try {
-        const pdfjs = await import("pdfjs-dist");
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
-        const data = await fetchLessonPdf(fileId);
-        if (cancelled) return;
-        const doc = await pdfjs.getDocument({ data }).promise;
-        if (cancelled) return;
-        docRef.current = doc;
-        const dims: Array<{ width: number; height: number }> = [];
-        for (let n = 1; n <= doc.numPages; n++) {
-          const page = await doc.getPage(n);
-          if (cancelled) return;
-          const vp = page.getViewport({ scale: 1 });
-          dims[n] = { width: vp.width, height: vp.height };
-          page.cleanup();
-        }
-        dimsRef.current = dims;
-        setTotal(doc.numPages);
-        setStatus("ready");
-      } catch (err) {
-        if (!cancelled) {
-          setErrorMessage(err instanceof Error ? err.message : "Could not load this lesson PDF.");
-          setStatus("error");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-      docRef.current?.destroy?.();
-      docRef.current = null;
     };
   }, [fileId, useNativeMobileViewer]);
 
@@ -281,18 +244,7 @@ export function PdfCanvasViewer({
     };
   }, [status, effScale, useNativeMobileViewer]);
 
-  // Block save/print shortcuts while the viewer is mounted.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const k = e.key.toLowerCase();
-      if ((e.ctrlKey || e.metaKey) && (k === "s" || k === "p")) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  useBlockSaveShortcuts();
 
   async function save(complete: boolean) {
     if (!lessonId) return;
