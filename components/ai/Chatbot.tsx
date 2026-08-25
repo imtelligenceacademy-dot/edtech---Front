@@ -58,11 +58,31 @@ const CHAT_STATE_KEY = "imt_teacher_chat_v1";
 // Width of the lesson viewer as a % of the window — a per-teacher preference,
 // so it outlives the tab.
 const PANE_WIDTH_KEY = "imt_lesson_pane_width";
+// The grade a teacher last taught. They come back to the same one for weeks,
+// so the gate points at it instead of asking them to remember.
+const LAST_GRADE_KEY = "imt_last_grade";
 
 type SavedChat = {
   messages: AIMessage[];
   lastLessonId: string | null;
 };
+
+function rememberGrade(grade: number) {
+  try {
+    window.localStorage.setItem(LAST_GRADE_KEY, String(grade));
+  } catch {
+    /* storage disabled — the gate just won't highlight anything */
+  }
+}
+
+function lastTaughtGrade(): number | null {
+  try {
+    const value = Number(window.localStorage.getItem(LAST_GRADE_KEY));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 function clearChatSession() {
   try {
@@ -92,7 +112,7 @@ const WORD_NUMBERS: Record<string, number> = {
 // "Grade 7 Lesson 03 Buzzer" -> "buzzer".
 function descriptivePart(title: string): string {
   return title
-    .replace(/^grade\s*\d+\s*lesson\s*\d+\s*/i, "")
+    .replace(/^grade\s*\d+\s*(?:python|micro:?bit)?\s*lesson\s*\d+\s*/i, "")
     .trim()
     .toLowerCase();
 }
@@ -327,6 +347,21 @@ export function Chatbot({
       /* quota / private mode — the session just won't survive a refresh */
     }
   }, [restored, messages, lastLesson]);
+
+  // A teacher assigned to a single grade has nothing to pick: send them
+  // through. replace(), so Back doesn't drop them on a gate they never saw.
+  useEffect(() => {
+    if (selectedGrade !== null || showFairProjects || !lessonsLoaded) return;
+    const grades = Array.from(new Set(lessons.map((l) => l.grade)));
+    if (grades.length !== 1) return;
+    rememberGrade(grades[0]);
+    router.replace(gradePath(grades[0]));
+  }, [selectedGrade, showFairProjects, lessonsLoaded, lessons, router]);
+
+  // Keep the remembered grade current while they work in one.
+  useEffect(() => {
+    if (selectedGrade !== null) rememberGrade(selectedGrade);
+  }, [selectedGrade]);
 
   // The restored lesson id only becomes a Lesson once the list has loaded.
   useEffect(() => {
@@ -728,6 +763,7 @@ export function Chatbot({
   function chooseGrade(grade: number) {
     setOpenedLesson(null);
     setLastLesson(null);
+    rememberGrade(grade);
     router.push(gradePath(grade));
   }
 
@@ -974,6 +1010,8 @@ export function Chatbot({
           ) : selectedGrade === null ? (
             <GradeGate
               grades={availableGrades}
+              lessons={lessons}
+              progressByLesson={progressByLesson}
               loading={!lessonsLoaded}
               onPick={chooseGrade}
               light={light}
@@ -1275,17 +1313,25 @@ export function Chatbot({
 // before the assistant is usable. Lessons + answers are scoped to it.
 function GradeGate({
   grades,
+  lessons,
+  progressByLesson,
   loading,
   onPick,
   light,
 }: {
   grades: number[];
+  lessons: Lesson[];
+  progressByLesson: Record<string, ProgressEntry>;
   loading: boolean;
   onPick: (grade: number) => void;
   light: boolean;
 }) {
+  // Read once on mount: the value changes only by picking a grade, which
+  // navigates away from this screen anyway.
+  const [lastGrade] = useState(lastTaughtGrade);
+
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col items-center justify-center text-center">
+    <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
       <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand to-brand-800 shadow-xl shadow-brand/40">
         <GraduationCap size={28} className="text-white" />
       </div>
@@ -1319,39 +1365,128 @@ function GradeGate({
           lesson.
         </p>
       ) : (
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
+        <div className="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {grades.map((g) => (
-            <button
+            <GradeCard
               key={g}
-              onClick={() => onPick(g)}
-              className={cn(
-                "flex min-w-[110px] flex-col items-center gap-1 rounded-2xl border px-5 py-4 transition hover:border-brand/50",
-                light
-                  ? "border-slate-200 bg-white/70 hover:bg-white"
-                  : "border-white/10 bg-white/5 hover:bg-white/10"
-              )}
-            >
-              <span
-                className={cn(
-                  "text-[11px] uppercase tracking-wider",
-                  light ? "text-slate-400" : "text-slate-500"
-                )}
-              >
-                Grade
-              </span>
-              <span
-                className={cn(
-                  "text-2xl font-semibold",
-                  light ? "text-slate-900" : "text-white"
-                )}
-              >
-                {g}
-              </span>
-            </button>
+              grade={g}
+              lessons={lessons.filter((l) => l.grade === g)}
+              progressByLesson={progressByLesson}
+              lastTaught={g === lastGrade}
+              onPick={onPick}
+              light={light}
+            />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+// One grade, with enough of its state to choose without guessing: how far
+// through the grade they are, and which lesson opens next.
+function GradeCard({
+  grade,
+  lessons,
+  progressByLesson,
+  lastTaught,
+  onPick,
+  light,
+}: {
+  grade: number;
+  lessons: Lesson[];
+  progressByLesson: Record<string, ProgressEntry>;
+  lastTaught: boolean;
+  onPick: (grade: number) => void;
+  light: boolean;
+}) {
+  const ordered = [...lessons].sort(byLessonNo);
+  const done = ordered.filter((l) => l.accessStatus === "completed").length;
+  const next = ordered.find((l) => (l.accessStatus ?? "available") === "available");
+  const waiting = ordered.find((l) => l.accessStatus === "waiting");
+  const progress = next ? progressByLesson[next.id] : undefined;
+
+  // One line saying what happens if they pick this grade.
+  const status = next
+    ? progress?.lastSlide && progress.slideTotal
+      ? `Resume · slide ${progress.lastSlide} of ${progress.slideTotal}`
+      : `Next · ${descriptivePart(next.title) || next.title}`
+    : waiting
+    ? `Unlocks ${formatUnlockDate(waiting.availableAt)}`
+    : done === ordered.length && ordered.length > 0
+    ? "All lessons completed"
+    : "No lesson open yet";
+
+  return (
+    <button
+      onClick={() => onPick(grade)}
+      className={cn(
+        "group flex flex-col gap-2 rounded-2xl border px-5 py-4 text-left transition hover:border-brand/50",
+        lastTaught
+          ? "border-brand/40 bg-white shadow-lg shadow-brand/10"
+          : light
+          ? "border-slate-200 bg-white/70 hover:bg-white"
+          : "border-white/10 bg-white/5 hover:bg-white/10"
+      )}
+    >
+      <div className="flex items-baseline gap-2">
+        <span
+          className={cn(
+            "text-[11px] uppercase tracking-wider",
+            light ? "text-slate-400" : "text-slate-500"
+          )}
+        >
+          Grade
+        </span>
+        <span
+          className={cn(
+            "text-2xl font-semibold leading-none",
+            light ? "text-slate-900" : "text-white"
+          )}
+        >
+          {grade}
+        </span>
+        {lastTaught && (
+          <span className="ml-auto rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+            Last taught
+          </span>
+        )}
+      </div>
+
+      <p
+        className={cn(
+          "truncate text-[11px]",
+          next ? "text-brand-700" : light ? "text-slate-500" : "text-slate-400"
+        )}
+        title={next ? next.title : status}
+      >
+        {status}
+      </p>
+
+      <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            "h-1 flex-1 overflow-hidden rounded-full",
+            light ? "bg-slate-100" : "bg-white/10"
+          )}
+        >
+          <div
+            className="h-full bg-brand"
+            style={{
+              width: `${ordered.length ? (done / ordered.length) * 100 : 0}%`,
+            }}
+          />
+        </div>
+        <span
+          className={cn(
+            "shrink-0 text-[10px] tabular-nums",
+            light ? "text-slate-500" : "text-slate-400"
+          )}
+        >
+          {done}/{ordered.length} done
+        </span>
+      </div>
+    </button>
   );
 }
 
