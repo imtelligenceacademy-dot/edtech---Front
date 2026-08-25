@@ -2,26 +2,35 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Presentation } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  FolderClosed,
+  FolderOpen,
+  Presentation,
+} from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { listLessons, listProgress } from "@/lib/api";
 import { gradePath, TEACHER_HOME } from "@/lib/teacher-routes";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import type { Lesson, ProgressEntry } from "@/types";
 
-// "Grade 7 · Python · " prefix for a lesson line. Older lessons carry no
-// course, in which case the grade stands on its own.
+// "Python · " prefix for a lesson line inside a grade folder. Older lessons
+// carry no course, and then the title stands on its own.
+function courseLabel(lesson?: Lesson): string {
+  if (lesson?.course === "python") return "Python · ";
+  if (lesson?.course === "microbit") return "micro:bit · ";
+  return "";
+}
+
+// "Grade 7 · Python · " prefix, for lines that stand outside a grade folder.
 function lessonMeta(lesson?: Lesson): string {
   if (!lesson) return "";
-  const course =
-    lesson.course === "python"
-      ? "Python"
-      : lesson.course === "microbit"
-      ? "micro:bit"
-      : null;
-  return `Grade ${lesson.grade}${course ? ` · ${course}` : ""} · `;
+  const course = courseLabel(lesson);
+  return `Grade ${lesson.grade} · ${course}`;
 }
 
 function isCompleted(p: ProgressEntry): boolean {
@@ -33,6 +42,70 @@ function isCompleted(p: ProgressEntry): boolean {
 function positionLabel(p: ProgressEntry): string {
   if (p.lastSlide && p.slideTotal) return `Slide ${p.lastSlide} of ${p.slideTotal}`;
   return `${p.percentComplete}% read`;
+}
+
+type GradeFolderData = {
+  grade: number | null;
+  lessons: { entry: ProgressEntry; lesson?: Lesson }[];
+  lastCompletedAt?: string;
+};
+
+// A year's worth of finished lessons is a long flat list, and a teacher reads
+// it by grade — "what has Grade 7 done" — so each grade is its own folder.
+function GradeFolder({
+  folder,
+  defaultOpen,
+}: {
+  folder: GradeFolderData;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const count = folder.lessons.length;
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 bg-slate-50/70 px-4 py-3 text-left transition hover:bg-slate-100"
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 shadow-sm">
+          {open ? <FolderOpen size={16} /> : <FolderClosed size={16} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-slate-900">
+            {folder.grade === null ? "Other lessons" : `Grade ${folder.grade}`}
+          </span>
+          <span className="text-xs text-slate-500">
+            {count} lesson{count === 1 ? "" : "s"} · last completed{" "}
+            {formatDate(folder.lastCompletedAt)}
+          </span>
+        </span>
+        <ChevronDown
+          size={16}
+          className={cn("shrink-0 text-slate-400 transition", open && "rotate-180")}
+        />
+      </button>
+
+      {open && (
+        <ul className="divide-y divide-slate-100">
+          {folder.lessons.map(({ entry, lesson }) => (
+            <li key={entry.id} className="flex items-center gap-3 px-4 py-3">
+              <CheckCircle2 size={15} className="shrink-0 text-emerald-500" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-slate-800">
+                  {lesson?.title ?? "Lesson"}
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  {courseLabel(lesson)}
+                  Completed {formatDate(entry.lastOpenedAt)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // A teacher only ever sees their own finished work plus the one lesson they
@@ -67,6 +140,35 @@ export default function TeacherProgressPage() {
       .filter((p) => !isCompleted(p) && Boolean(p.lastOpenedAt))
       .sort(byLastOpened)[0] ?? null;
   const inProgressLesson = inProgress ? lessonOf(inProgress) : undefined;
+
+  // Finished lessons, filed by grade: grades ascending, and inside each one the
+  // curriculum order the teacher taught them in.
+  const gradeFolders: GradeFolderData[] = (() => {
+    const byGrade = new Map<number | null, GradeFolderData>();
+    for (const entry of completed) {
+      const lesson = lessonOf(entry);
+      const grade = lesson?.grade ?? null;
+      const folder = byGrade.get(grade) ?? { grade, lessons: [] };
+      folder.lessons.push({ entry, lesson });
+      if (!folder.lastCompletedAt || (entry.lastOpenedAt ?? "") > folder.lastCompletedAt) {
+        folder.lastCompletedAt = entry.lastOpenedAt;
+      }
+      byGrade.set(grade, folder);
+    }
+    const folders: GradeFolderData[] = Array.from(byGrade.values());
+    for (const folder of folders) {
+      folder.lessons.sort(
+        (a: { lesson?: Lesson }, b: { lesson?: Lesson }) =>
+          (a.lesson?.lessonNo ?? 0) - (b.lesson?.lessonNo ?? 0)
+      );
+    }
+    folders.sort((a, b) => (a.grade ?? 99) - (b.grade ?? 99));
+    return folders;
+  })();
+
+  // Open the grade they finished something in most recently; the rest stay
+  // filed away.
+  const mostRecentGrade = completed.length > 0 ? lessonOf(completed[0])?.grade ?? null : null;
 
   if (loading) {
     return (
@@ -168,35 +270,29 @@ export default function TeacherProgressPage() {
       </Card>
 
       <Card>
-        <CardHeader title="Completed lessons" />
-        <CardBody className="space-y-3">
+        <CardHeader
+          title="Completed lessons"
+          subtitle={
+            completed.length > 0
+              ? `${completed.length} across ${gradeFolders.length} grade${
+                  gradeFolders.length === 1 ? "" : "s"
+                }`
+              : undefined
+          }
+        />
+        <CardBody className="space-y-2">
           {completed.length === 0 ? (
             <p className="text-sm text-slate-500">
               You haven&apos;t completed a lesson yet.
             </p>
           ) : (
-            completed.map((p) => {
-              const l = lessonOf(p);
-              return (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 p-4"
-                >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                    <CheckCircle2 size={16} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="truncate font-medium text-slate-900">
-                      {l?.title ?? "Lesson"}
-                    </h4>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {lessonMeta(l)}
-                      Completed {formatDate(p.lastOpenedAt)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
+            gradeFolders.map((folder) => (
+              <GradeFolder
+                key={folder.grade ?? "other"}
+                folder={folder}
+                defaultOpen={folder.grade === mostRecentGrade}
+              />
+            ))
           )}
         </CardBody>
       </Card>
