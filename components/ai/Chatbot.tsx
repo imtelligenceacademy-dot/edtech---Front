@@ -623,6 +623,21 @@ export function Chatbot({
       return;
     }
     if (showFairProjects) router.push(gradePath(lesson.grade));
+
+    // Already presenting? Move the classroom screen to this lesson instead of
+    // opening it only here — otherwise the class sits on the previous lesson
+    // while the teacher's controls count pages of a different one.
+    if (presentingRef.current) {
+      if (lesson.fileId) {
+        startPresenting(lesson);
+        return;
+      }
+      stopPresenting();
+      pushAssistant(
+        `"${lesson.title}" has no PDF to put on the classroom screen, so I've stopped presenting.`
+      );
+    }
+
     setOpenedLesson(lesson);
     setLastLesson(lesson);
     setOpenedSlide(1);
@@ -814,14 +829,42 @@ export function Chatbot({
 
   // --- Presenting on the classroom screen -------------------------------- #
 
-  // Open the lesson on the second display. The window has to be opened inside
-  // this click or the browser blocks it, so placement happens afterwards.
+  // Put a lesson on the second display. A window already on the projector is
+  // reused — switching lessons should move the class along, not leave them on
+  // the old one while a second window opens somewhere. A new window has to be
+  // opened inside this click or the browser blocks it, so placement follows.
   function startPresenting(lesson: Lesson) {
     if (!lesson.fileId) return;
-    const { win } = openPresenterWindow(`/teacher/present/${lesson.id}`);
-    if (!win) {
-      setPresentBlocked(true);
-      return;
+    const url = `/teacher/present/${lesson.id}`;
+    const existing = presentWinRef.current;
+    const reusing = Boolean(existing && !existing.closed);
+
+    // Drop the old lesson's channel before navigating: its document says
+    // goodbye on unload, and nobody should be listening for that any more.
+    if (byeTimerRef.current !== null) {
+      window.clearTimeout(byeTimerRef.current);
+      byeTimerRef.current = null;
+    }
+    presentChannelRef.current?.close();
+    presentChannelRef.current = null;
+
+    let win: Window | null = existing;
+    if (reusing) {
+      try {
+        win!.location.href = url;
+        win!.focus();
+      } catch {
+        win = null; // window is gone or not ours any more
+      }
+    }
+    if (!win || win.closed) {
+      const opened = openPresenterWindow(url);
+      if (!opened.win) {
+        setPresentBlocked(true);
+        return;
+      }
+      win = opened.win;
+      void placeOnExternalScreen(win);
     }
     setPresentBlocked(false);
     presentWinRef.current = win;
@@ -864,9 +907,10 @@ export function Chatbot({
     setOpenedLesson(null);
     setLastLesson(lesson);
     setChatCollapsed(false);
-    void placeOnExternalScreen(win);
     pushAssistant(
-      `"${lesson.title}" is on your second screen. Use the bar below to change the page — the class only ever sees the lesson, never this chat.`,
+      reusing
+        ? `The classroom screen is now showing "${lesson.title}", from page 1.`
+        : `"${lesson.title}" is on your second screen. Use the bar below to change the page — the class only ever sees the lesson, never this chat.`,
       { sourceRef: lesson.title }
     );
   }
