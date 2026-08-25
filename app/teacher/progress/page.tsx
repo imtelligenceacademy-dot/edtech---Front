@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, ChevronDown, MessageSquare, Presentation } from "lucide-react";
+import { ArrowRight, CheckCircle2, Presentation } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
-import { listChatMessages, listLessons, listProgress } from "@/lib/api";
+import { listLessons, listProgress } from "@/lib/api";
 import { gradePath, TEACHER_HOME } from "@/lib/teacher-routes";
 import { formatDate } from "@/lib/utils";
-import type { Lesson, ProgressEntry, StoredChatMessage } from "@/types";
+import type { Lesson, ProgressEntry } from "@/types";
 
 // "Grade 7 · Python · " prefix for a lesson line. Older lessons carry no
 // course, in which case the grade stands on its own.
@@ -33,77 +33,6 @@ function isCompleted(p: ProgressEntry): boolean {
 function positionLabel(p: ProgressEntry): string {
   if (p.lastSlide && p.slideTotal) return `Slide ${p.lastSlide} of ${p.slideTotal}`;
   return `${p.percentComplete}% read`;
-}
-
-// A finished lesson, with the conversation the teacher had about it. The
-// assistant itself always follows the lesson in play, so this is the only way
-// back to what they asked about a lesson they have since completed.
-function CompletedLesson({
-  entry,
-  lesson,
-}: {
-  entry: ProgressEntry;
-  lesson?: Lesson;
-}) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<StoredChatMessage[] | null>(null);
-
-  function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (next && messages === null) {
-      listChatMessages(entry.lessonId)
-        .then(setMessages)
-        .catch(() => setMessages([]));
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-slate-200">
-      <div className="flex items-center gap-3 p-4">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-          <CheckCircle2 size={16} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate font-medium text-slate-900">
-            {lesson?.title ?? "Lesson"}
-          </h4>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {lessonMeta(lesson)}
-            Completed {formatDate(entry.lastOpenedAt)}
-          </p>
-        </div>
-        <button
-          onClick={toggle}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
-        >
-          <MessageSquare size={12} /> Chat
-          <ChevronDown size={12} className={open ? "rotate-180 transition" : "transition"} />
-        </button>
-      </div>
-
-      {open && (
-        <div className="space-y-2 border-t border-slate-100 bg-slate-50/60 p-4">
-          {messages === null && <p className="text-xs text-slate-500">Loading…</p>}
-          {messages?.length === 0 && (
-            <p className="text-xs text-slate-500">
-              You didn&apos;t ask the assistant anything about this lesson.
-            </p>
-          )}
-          {messages?.map((m) => (
-            <div key={m.id} className="text-xs">
-              <p className="font-medium text-slate-500">
-                {m.role === "user" ? "You" : "Assistant"} · {formatDate(m.createdAt)}
-              </p>
-              <p className="mt-0.5 whitespace-pre-wrap break-words text-slate-800">
-                {m.content}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // A teacher only ever sees their own finished work plus the one lesson they
@@ -246,13 +175,28 @@ export default function TeacherProgressPage() {
               You haven&apos;t completed a lesson yet.
             </p>
           ) : (
-            completed.map((p) => (
-              <CompletedLesson
-                key={p.id}
-                entry={p}
-                lesson={lessonOf(p)}
-              />
-            ))
+            completed.map((p) => {
+              const l = lessonOf(p);
+              return (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-lg border border-slate-200 p-4"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                    <CheckCircle2 size={16} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="truncate font-medium text-slate-900">
+                      {l?.title ?? "Lesson"}
+                    </h4>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {lessonMeta(l)}
+                      Completed {formatDate(p.lastOpenedAt)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })
           )}
         </CardBody>
       </Card>
