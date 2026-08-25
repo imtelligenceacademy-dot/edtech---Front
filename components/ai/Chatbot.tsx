@@ -21,6 +21,15 @@ import {
   Maximize2,
   Minimize2,
   BellRing,
+  TrendingUp,
+  ArrowDown,
+  Copy,
+  Check,
+  RotateCcw,
+  Square,
+  PanelRightClose,
+  PanelRightOpen,
+  Sparkles,
 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import {
@@ -29,12 +38,43 @@ import {
   listLessons,
   listFairProjects,
   listMyAccessRequests,
+  listProgress,
   requestLessonAccess,
   saveLessonProgress,
   streamTeacherAI,
 } from "@/lib/api";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import type { AIMessage, FairProject, Lesson, Session } from "@/types";
+
+// The chat lives in one browser tab for a whole class. A stray refresh used to
+// wipe the session, so grade + transcript + the lesson in play are mirrored to
+// sessionStorage and restored on mount ("New chat" and sign-out clear it).
+const CHAT_STATE_KEY = "imt_teacher_chat_v1";
+// Width of the lesson viewer as a % of the window — a per-teacher preference,
+// so it outlives the tab.
+const PANE_WIDTH_KEY = "imt_lesson_pane_width";
+
+type SavedChat = {
+  selectedGrade: number | null;
+  messages: AIMessage[];
+  lastLessonId: string | null;
+  showFairProjects: boolean;
+};
+
+function clearChatSession() {
+  try {
+    window.sessionStorage.removeItem(CHAT_STATE_KEY);
+  } catch {
+    /* private mode / storage disabled — nothing to clear */
+  }
+}
+
+// One-tap openers for teachers who don't know what to ask the assistant yet.
+const STARTER_PROMPTS = [
+  "How should I introduce this lesson?",
+  "What do students usually get wrong here?",
+  "Give me a 5-minute starter activity",
+];
 
 
 // Maps "first/second/…", "one/two/…", "1st/2nd/…" to a lesson number.
@@ -221,8 +261,81 @@ export function Chatbot() {
   const [requestedLessonIds, setRequestedLessonIds] = useState<Set<string>>(
     () => new Set()
   );
+  // Self-reported completion per lesson, so the welcome screen can offer to
+  // resume ("you're 40% through") instead of just "open".
+  const [percentByLesson, setPercentByLesson] = useState<Record<string, number>>({});
+  // The teacher is reading back through the transcript — don't yank them to the
+  // bottom while a reply streams in.
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const suppressScrollUntilRef = useRef(0);
+  // A reply is in flight and can be stopped; the last question is kept so a
+  // failed turn can be retried without retyping it.
+  const [streaming, setStreaming] = useState(false);
+  const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // Lesson viewer / chat split (desktop): draggable, and the chat can be folded
+  // away entirely for full-width presenting.
+  const [paneWidth, setPaneWidth] = useState(60);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  // Gate the "save" effect until the previous session has been restored, so an
+  // empty first render can't overwrite it.
+  const [restored, setRestored] = useState(false);
+  const pendingLessonIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Restore the previous session (a refresh mid-class shouldn't cost the chat).
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(CHAT_STATE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<SavedChat>;
+        if (typeof saved.selectedGrade === "number") setSelectedGrade(saved.selectedGrade);
+        if (Array.isArray(saved.messages)) setMessages(saved.messages);
+        if (saved.showFairProjects) setShowFairProjects(true);
+        pendingLessonIdRef.current = saved.lastLessonId ?? null;
+      }
+      const width = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
+      if (width >= 35 && width <= 80) setPaneWidth(width);
+    } catch {
+      /* unreadable storage — start fresh */
+    }
+    setRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!restored) return;
+    try {
+      const payload: SavedChat = {
+        selectedGrade,
+        messages,
+        lastLessonId: lastLesson?.id ?? null,
+        showFairProjects,
+      };
+      window.sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(payload));
+    } catch {
+      /* quota / private mode — the session just won't survive a refresh */
+    }
+  }, [restored, selectedGrade, messages, lastLesson, showFairProjects]);
+
+  // The restored lesson id only becomes a Lesson once the list has loaded.
+  useEffect(() => {
+    const id = pendingLessonIdRef.current;
+    if (!id || lessons.length === 0) return;
+    pendingLessonIdRef.current = null;
+    const match = lessons.find((l) => l.id === id);
+    if (match) setLastLesson(match);
+  }, [lessons]);
+
+  useEffect(() => {
+    if (!restored) return;
+    try {
+      window.localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(paneWidth)));
+    } catch {
+      /* preference just won't stick */
+    }
+  }, [restored, paneWidth]);
 
   useEffect(() => {
     getSession().then(setSession).catch(() => setSession(null));
@@ -231,6 +344,8 @@ export function Chatbot() {
       .then(setLessons)
       .catch(() => setLessons([]))
       .finally(() => setLessonsLoaded(true));
+    // How far the teacher got in each lesson, for the "continue" card.
+    refreshProgress();
     // Track which locked lessons the teacher has already asked to unlock.
     listMyAccessRequests()
       .then((reqs) =>
@@ -248,11 +363,35 @@ export function Chatbot() {
   }, [session?.ictFairAccess]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    if (!atBottomRef.current) return;
+    scrollTranscriptToBottom();
   }, [messages, thinking]);
+
+  // A smooth scroll fires scroll events all the way down, and every one of them
+  // looks like "the teacher scrolled up" until the animation lands. Ignore the
+  // transcript's own scrolling for the length of the animation.
+  function scrollTranscriptToBottom() {
+    const el = scrollRef.current;
+    if (!el) return;
+    suppressScrollUntilRef.current = Date.now() + 800;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }
+
+  // Track how close to the bottom the transcript is scrolled. Anything within a
+  // bubble's height counts as "following along".
+  function onTranscriptScroll(e: React.UIEvent<HTMLDivElement>) {
+    if (Date.now() < suppressScrollUntilRef.current) return;
+    const el = e.currentTarget;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    atBottomRef.current = near;
+    setAtBottom((prev) => (prev === near ? prev : near));
+  }
+
+  function jumpToLatest() {
+    atBottomRef.current = true;
+    setAtBottom(true);
+    scrollTranscriptToBottom();
+  }
 
   useEffect(() => {
     if (inputRef.current) {
@@ -275,14 +414,25 @@ export function Chatbot() {
     ]);
   }
 
-  async function answerQuestion(text: string) {
+  // `retry` re-asks a question that's already in the transcript, so the failed
+  // turn (and its error reply) must be trimmed off the history first.
+  async function answerQuestion(text: string, retry = false) {
+    let prior = messages;
+    if (retry) {
+      prior = [...messages];
+      while (prior.length && prior[prior.length - 1].role === "assistant") prior.pop();
+      if (prior.length && prior[prior.length - 1].role === "user") prior.pop();
+    }
     // Prior turns become the conversation history; the backend appends `text`.
-    const history = messages
+    const history = prior
       .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
     const assistantId = `a_${Date.now()}`;
     let started = false;
     let sourceRef: string | undefined;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStreaming(true);
 
     try {
       await streamTeacherAI(
@@ -293,6 +443,7 @@ export function Chatbot() {
           history,
         },
         {
+          signal: controller.signal,
           onMeta: (m) => {
             sourceRef = m.sourceRef;
           },
@@ -327,8 +478,11 @@ export function Chatbot() {
       }
       if (!started) {
         pushAssistant("I didn't get a response. Please try again.");
+        setFailedPrompt(text);
       }
     } catch (err) {
+      // Stopped on purpose — keep whatever streamed in and say nothing.
+      if (controller.signal.aborted) return;
       // The backend sends a specific, already-safe reason (usage limit reached,
       // provider unavailable, timed out...). Prefer it over a generic line so the
       // teacher knows whether to retry now, wait, or ask an administrator.
@@ -340,14 +494,50 @@ export function Chatbot() {
           ? "I couldn't reach the assistant. Please check your connection and try again."
           : reason
       );
+      setFailedPrompt(text);
     } finally {
       setThinking(false);
+      setStreaming(false);
+      if (abortRef.current === controller) abortRef.current = null;
     }
+  }
+
+  // Abandon the reply in flight. Whatever already streamed in stays on screen.
+  function stopStreaming() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setThinking(false);
+    setStreaming(false);
+  }
+
+  // Re-ask the last question that failed, dropping the error reply.
+  function retryLast() {
+    const text = failedPrompt;
+    if (!text) return;
+    setFailedPrompt(null);
+    setMessages((prev) => {
+      const next = [...prev];
+      if (next.length && next[next.length - 1].role === "assistant") next.pop();
+      return next;
+    });
+    setThinking(true);
+    void answerQuestion(text, true);
   }
 
   // Re-pull lesson access state (statuses shift after a completion/unlock).
   function refreshLessons() {
     listLessons().then(setLessons).catch(() => {});
+    refreshProgress();
+  }
+
+  function refreshProgress() {
+    listProgress()
+      .then((rows) =>
+        setPercentByLesson(
+          Object.fromEntries(rows.map((r) => [r.lessonId, r.percentComplete]))
+        )
+      )
+      .catch(() => {});
   }
 
   // Teacher asks the super-admin to unlock a locked lesson.
@@ -469,6 +659,10 @@ export function Chatbot() {
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    setFailedPrompt(null);
+    // Sending is an intent to follow the answer.
+    atBottomRef.current = true;
+    setAtBottom(true);
 
     // Lesson actions are handled by the app itself (not the LLM):
     if (COMPLETE_INTENT.test(text)) {
@@ -549,8 +743,33 @@ export function Chatbot() {
     setOpenedLesson(fresh);
   }
 
+  // Drag the divider between the lesson viewer and the chat.
+  function startPaneDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    const previousCursor = document.body.style.cursor;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    function onMove(ev: MouseEvent) {
+      const pct = (ev.clientX / window.innerWidth) * 100;
+      setPaneWidth(Math.min(80, Math.max(35, pct)));
+    }
+    function onUp() {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   // Return to the clean starting screen (grade picker) with an empty session.
   function resetSession() {
+    stopStreaming();
+    clearChatSession();
+    setFailedPrompt(null);
+    setChatCollapsed(false);
     setMessages([]);
     setInput("");
     setThinking(false);
@@ -606,6 +825,9 @@ export function Chatbot() {
       {openedLesson && (
         <LessonPane
           lesson={openedLesson}
+          width={chatCollapsed ? 100 : paneWidth}
+          chatCollapsed={chatCollapsed}
+          onToggleChat={() => setChatCollapsed((v) => !v)}
           current={openedSlide}
           onPrev={() => setOpenedSlide((s) => Math.max(1, s - 1))}
           onNext={() =>
@@ -614,12 +836,28 @@ export function Chatbot() {
           onClose={() => {
             setOpenedLesson(null);
             setViewedSlide(null);
+            setChatCollapsed(false);
             refreshLessons();
           }}
           onFullscreen={() => setFullscreenLesson(openedLesson)}
           onCompleted={refreshLessons}
           onSlideChange={setViewedSlide}
           light={light}
+        />
+      )}
+
+      {/* Drag handle between the lesson and the chat (desktop layout only) */}
+      {openedLesson && !chatCollapsed && (
+        <div
+          onMouseDown={startPaneDrag}
+          onDoubleClick={() => setPaneWidth(60)}
+          title="Drag to resize · double-click to reset"
+          role="separator"
+          aria-orientation="vertical"
+          className={cn(
+            "relative z-20 hidden w-1.5 shrink-0 cursor-col-resize transition md:block",
+            light ? "bg-slate-200/70 hover:bg-brand/50" : "bg-white/10 hover:bg-brand/50"
+          )}
         />
       )}
 
@@ -640,8 +878,13 @@ export function Chatbot() {
         <FairFullscreen project={fairViewer} onClose={() => setFairViewer(null)} />
       )}
 
-      {/* Chat column */}
-      <div className="relative z-10 flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      {/* Chat column — folded away while presenting full-width */}
+      <div
+        className={cn(
+          "relative z-10 h-full min-h-0 min-w-0 flex-1 flex-col",
+          openedLesson && chatCollapsed ? "hidden" : "flex"
+        )}
+      >
         {/* Header — relative z-30 lifts it (and its dropdown menus) above the
             chat messages below, which otherwise paint over the dropdowns. */}
         <div
@@ -705,6 +948,7 @@ export function Chatbot() {
         {/* Required first step: pick a grade, then the chat / welcome */}
         <div
           ref={scrollRef}
+          onScroll={onTranscriptScroll}
           className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
         >
           {showFairProjects ? (
@@ -724,8 +968,10 @@ export function Chatbot() {
             <WelcomeScreen
               lessons={gradeLessons}
               grade={selectedGrade}
+              percentByLesson={percentByLesson}
               onOpenLesson={openLesson}
               onRequestAccess={requestAccess}
+              onPrompt={(text) => send(text)}
               requestedLessonIds={requestedLessonIds}
               light={light}
             />
@@ -734,10 +980,42 @@ export function Chatbot() {
               {messages.map((m) => (
                 <MessageBubble key={m.id} message={m} light={light} />
               ))}
+              {failedPrompt && !thinking && !streaming && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={retryLast}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition",
+                      light
+                        ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
+                        : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40"
+                    )}
+                  >
+                    <RotateCcw size={12} /> Try that question again
+                  </button>
+                </div>
+              )}
               {thinking && <TypingIndicator light={light} />}
             </div>
           )}
         </div>
+
+        {/* Reading back through the transcript while a reply streams in */}
+        {!atBottom && messages.length > 0 && (
+          <div className="pointer-events-none relative z-20">
+            <button
+              onClick={jumpToLatest}
+              className={cn(
+                "pointer-events-auto absolute -top-12 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-lg transition",
+                light
+                  ? "border-slate-200 bg-white text-slate-700 hover:text-brand-700"
+                  : "border-white/10 bg-slate-900 text-slate-200"
+              )}
+            >
+              <ArrowDown size={12} /> Jump to latest
+            </button>
+          </div>
+        )}
 
         {/* Composer — hidden on the grade gate (the assistant isn't usable
             until a grade is picked) and in ICT Fair mode (view-only, no chat) */}
@@ -778,21 +1056,32 @@ export function Chatbot() {
                     : "text-white placeholder:text-slate-500"
                 )}
               />
-              <button
-                onClick={() => send()}
-                disabled={!input.trim()}
-                className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition",
-                  input.trim()
-                    ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/40 hover:brightness-110"
-                    : light
-                    ? "bg-slate-100 text-slate-400"
-                    : "bg-white/5 text-slate-500"
-                )}
-                aria-label="Send"
-              >
-                <ArrowUp size={16} />
-              </button>
+              {thinking || streaming ? (
+                <button
+                  onClick={stopStreaming}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-700"
+                  aria-label="Stop the reply"
+                  title="Stop"
+                >
+                  <Square size={13} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => send()}
+                  disabled={!input.trim()}
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition",
+                    input.trim()
+                      ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/40 hover:brightness-110"
+                      : light
+                      ? "bg-slate-100 text-slate-400"
+                      : "bg-white/5 text-slate-500"
+                  )}
+                  aria-label="Send"
+                >
+                  <ArrowUp size={16} />
+                </button>
+              )}
             </div>
             <p
               className={cn(
@@ -1055,18 +1344,34 @@ function GradeGate({
 function WelcomeScreen({
   lessons,
   grade,
+  percentByLesson,
   onOpenLesson,
   onRequestAccess,
+  onPrompt,
   requestedLessonIds,
   light,
 }: {
   lessons: Lesson[];
   grade: number;
+  percentByLesson: Record<string, number>;
   onOpenLesson: (lesson: Lesson) => void;
   onRequestAccess: (lesson: Lesson) => void;
+  onPrompt: (text: string) => void;
   requestedLessonIds: Set<string>;
   light: boolean;
 }) {
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const ordered = [...lessons].sort(byLessonNo);
+  // Sequential unlocking means exactly one lesson is normally open — that one
+  // is the whole point of this screen, so it gets the hero treatment.
+  const current = ordered.find((l) => (l.accessStatus ?? "available") === "available");
+  const completed = ordered.filter((l) => l.accessStatus === "completed");
+  const upcoming = ordered.filter(
+    (l) => l.accessStatus !== "completed" && l.id !== current?.id
+  );
+  const percent = current ? percentByLesson[current.id] ?? 0 : 0;
+
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center py-6 text-center sm:py-10">
       <img
@@ -1085,8 +1390,8 @@ function WelcomeScreen({
         How can I help you teach today?
       </h1>
       <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
-        Teaching <span className="font-medium">Grade {grade}</span>. Open one of your
-        lessons to present it, or ask me a question.
+        Teaching <span className="font-medium">Grade {grade}</span>. Open your
+        lesson to present it, or ask me a question.
       </p>
 
       {lessons.length === 0 && (
@@ -1095,9 +1400,67 @@ function WelcomeScreen({
         </p>
       )}
 
+      {/* The lesson they're on — one obvious thing to click. */}
+      {current && (
+        <button
+          onClick={() => onOpenLesson(current)}
+          className="mt-8 w-full rounded-2xl border border-brand/30 bg-white p-5 text-left shadow-lg shadow-brand/10 transition hover:border-brand/60 hover:shadow-brand/20"
+        >
+          <div className="flex items-center gap-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/30">
+              <Presentation size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-brand-600">
+                {percent > 0 ? "Continue where you left off" : "Your current lesson"}
+                {current.course ? ` · ${courseLabel(current.course)}` : ""}
+              </p>
+              <p className="mt-0.5 truncate text-base font-semibold text-slate-900">
+                {current.title}
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3.5 py-2 text-xs font-medium text-white shadow-lg shadow-brand/30">
+              {percent > 0 ? "Continue" : "Open lesson"}
+              <ChevronRight size={13} />
+            </span>
+          </div>
+          {percent > 0 && (
+            <div className="mt-4 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full bg-brand" style={{ width: `${percent}%` }} />
+              </div>
+              <span className="w-20 text-right text-[11px] tabular-nums text-slate-500">
+                {percent}% read
+              </span>
+            </div>
+          )}
+        </button>
+      )}
+
+      {/* Openers, so the assistant isn't a blank box. */}
       {lessons.length > 0 && (
+        <div className="mt-5 flex w-full flex-wrap justify-center gap-2">
+          {STARTER_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => onPrompt(prompt)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] transition",
+                light
+                  ? "border-slate-200 bg-white/70 text-slate-600 hover:border-brand/40 hover:text-brand-700"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:border-brand/40"
+              )}
+            >
+              <Sparkles size={12} className="text-brand-600" /> {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Everything still ahead of them — locked or waiting out its period. */}
+      {upcoming.length > 0 && (
         <div className="mt-8 w-full space-y-6 text-left">
-          {groupLessonsByCourse(lessons).map(({ course, items }) => (
+          {groupLessonsByCourse(upcoming).map(({ course, items }) => (
             <div key={course ?? "default"}>
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500">
                 {courseLabel(course)}
@@ -1116,6 +1479,41 @@ function WelcomeScreen({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Finished lessons are history — folded away until asked for. */}
+      {completed.length > 0 && (
+        <div className="mt-6 w-full text-left">
+          <button
+            onClick={() => setShowCompleted((v) => !v)}
+            className={cn(
+              "flex items-center gap-1.5 text-[11px] font-medium transition",
+              light ? "text-slate-500 hover:text-slate-800" : "text-slate-400 hover:text-white"
+            )}
+          >
+            <CheckCircle2 size={12} className="text-emerald-500" />
+            {showCompleted ? "Hide" : "Show"} {completed.length} completed lesson
+            {completed.length === 1 ? "" : "s"}
+            <ChevronDown
+              size={12}
+              className={cn("transition", showCompleted && "rotate-180")}
+            />
+          </button>
+          {showCompleted && (
+            <div className="mt-2 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+              {completed.map((l) => (
+                <LessonChip
+                  key={l.id}
+                  lesson={l}
+                  onOpen={onOpenLesson}
+                  onRequestAccess={onRequestAccess}
+                  requested={requestedLessonIds.has(l.id)}
+                  light={light}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1256,12 +1654,19 @@ function LessonChip({
     );
   }
 
-  // Locked lessons show their status and a "Request access" action that pings
-  // the super-admin to unlock it.
+  // Locked lessons explain themselves in the chat when clicked (same as the
+  // lesson rail), and offer a "Request access" action that pings the
+  // super-admin to unlock it.
   return (
     <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-      {body}
-      {requested ? (
+      <button
+        onClick={() => onOpen(lesson)}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        title={`Why is "${lesson.title}" not available?`}
+      >
+        {body}
+      </button>
+      {status === "completed" ? null : requested ? (
         <span className="flex shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700">
           <CheckCircle2 size={12} /> Requested
         </span>
@@ -1285,8 +1690,20 @@ function MessageBubble({
   light: boolean;
 }) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — nothing useful to say about it */
+    }
+  }
+
   return (
-    <div className={cn("msg-in flex gap-3", isUser && "flex-row-reverse")}>
+    <div className={cn("msg-in group flex gap-3", isUser && "flex-row-reverse")}>
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
@@ -1312,8 +1729,22 @@ function MessageBubble({
         >
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-        {(message.sourceRef || message.cached) && (
-          <div className="flex flex-wrap items-center gap-1.5 px-1">
+        <div className="flex flex-wrap items-center gap-1.5 px-1">
+            {!isUser && (
+              <button
+                onClick={copy}
+                title="Copy this answer"
+                className={cn(
+                  "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] opacity-0 transition group-hover:opacity-100 focus:opacity-100",
+                  light
+                    ? "border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900"
+                    : "border-white/10 bg-white/5 text-slate-400 hover:text-white"
+                )}
+              >
+                {copied ? <Check size={10} /> : <Copy size={10} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            )}
             {message.sourceRef && (
               <span
                 className={cn(
@@ -1338,8 +1769,7 @@ function MessageBubble({
                 Fast response
               </span>
             )}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -1410,6 +1840,7 @@ function UserMenu({
   }
 
   async function handleSignOut() {
+    clearChatSession();
     await logout();
     router.push("/");
   }
@@ -1495,6 +1926,24 @@ function UserMenu({
           </div>
           <div className="p-1.5">
             <button
+              onClick={() => {
+                setOpen(false);
+                router.push("/teacher/progress");
+              }}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition",
+                light
+                  ? "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                  : "text-slate-200 hover:bg-white/5 hover:text-white"
+              )}
+            >
+              <TrendingUp
+                size={14}
+                className={light ? "text-slate-500" : "text-slate-400"}
+              />
+              Your progress
+            </button>
+            <button
               onClick={handleSignOut}
               className={cn(
                 "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition",
@@ -1553,6 +2002,9 @@ function TypingIndicator({ light }: { light: boolean }) {
 
 function LessonPane({
   lesson,
+  width,
+  chatCollapsed,
+  onToggleChat,
   current,
   onPrev,
   onNext,
@@ -1563,6 +2015,9 @@ function LessonPane({
   light,
 }: {
   lesson: Lesson;
+  width: number;
+  chatCollapsed: boolean;
+  onToggleChat: () => void;
   current: number;
   onPrev: () => void;
   onNext: () => void;
@@ -1578,8 +2033,9 @@ function LessonPane({
 
   return (
     <div
+      style={{ width: `${width}%` }}
       className={cn(
-        "relative z-10 hidden h-full w-3/4 shrink-0 flex-col border-r backdrop-blur-xl md:flex",
+        "relative z-10 hidden h-full shrink-0 flex-col border-r backdrop-blur-xl md:flex",
         light
           ? "border-slate-200/60 bg-white/40"
           : "border-white/5 bg-slate-950/40"
@@ -1639,6 +2095,19 @@ function LessonPane({
             <Maximize2 size={13} /> Full screen
           </button>
         )}
+        <button
+          onClick={onToggleChat}
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-lg transition",
+            light
+              ? "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              : "text-slate-400 hover:bg-white/5 hover:text-white"
+          )}
+          aria-label={chatCollapsed ? "Show the assistant" : "Hide the assistant"}
+          title={chatCollapsed ? "Show the assistant" : "Hide the assistant"}
+        >
+          {chatCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+        </button>
         <button
           onClick={onClose}
           className={cn(
@@ -1724,7 +2193,9 @@ function LessonPane({
             light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-500"
           )}
         >
-          Scroll the PDF on the left · ask the AI on the right about it
+          {chatCollapsed
+            ? "Presenting full width · reopen the assistant from the header"
+            : "Scroll the PDF on the left · ask the AI on the right about it"}
         </div>
       ) : (
         <div

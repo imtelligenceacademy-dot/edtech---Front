@@ -415,6 +415,9 @@ export function getAIUsage() {
 type StreamHandlers = {
   onDelta: (text: string) => void;
   onMeta?: (m: { sourceRef?: string }) => void;
+  // Lets the caller stop a reply mid-stream. Aborting rejects with an
+  // AbortError, which the caller is expected to treat as a clean stop.
+  signal?: AbortSignal;
 };
 
 // Shared SSE stream reader with one auth-refresh retry.
@@ -429,6 +432,7 @@ async function streamSSE(
     credentials: "include",
     headers: withAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
+    signal: handlers.signal,
   });
 
   if (res.status === 401 && !retried) {

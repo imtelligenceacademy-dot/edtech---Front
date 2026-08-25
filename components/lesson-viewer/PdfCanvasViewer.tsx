@@ -58,6 +58,9 @@ export function PdfCanvasViewer({
   const [current, setCurrent] = useState(1);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
+  // Completing locks the lesson and starts the waiting period before the next
+  // one opens, so it takes a second, deliberate click.
+  const [confirmingComplete, setConfirmingComplete] = useState(false);
   const [done, setDone] = useState(accessStatus === "completed");
   const [useNativeMobileViewer, setUseNativeMobileViewer] = useState(false);
   const [nativeUrl, setNativeUrl] = useState<string | null>(null);
@@ -370,14 +373,40 @@ export function PdfCanvasViewer({
               >
                 <ExternalLink size={16} /> Open PDF
               </a>
-              {lessonId && !done && (
+              {lessonId && !done && !confirmingComplete && (
                 <button
-                  onClick={() => save(true)}
+                  onClick={() => setConfirmingComplete(true)}
                   disabled={saving}
                   className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
                 >
-                  <Check size={15} /> {saving ? "Saving..." : "Mark complete"}
+                  <Check size={15} /> Mark complete
                 </button>
+              )}
+              {lessonId && !done && confirmingComplete && (
+                <div className="flex flex-col items-center gap-2">
+                  <p className={light ? "text-xs text-slate-600" : "text-xs text-slate-300"}>
+                    Finish this lesson? It locks and the next one starts its wait.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setConfirmingComplete(false)}
+                      disabled={saving}
+                      className={cn("rounded-lg border px-3 py-1.5 text-sm transition", light ? "border-slate-200 text-slate-700" : "border-white/10 text-slate-200")}
+                    >
+                      Not yet
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmingComplete(false);
+                        void save(true);
+                      }}
+                      disabled={saving}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                    >
+                      <Check size={15} /> {saving ? "Saving..." : "Yes, complete it"}
+                    </button>
+                  </div>
+                </div>
               )}
               {done && (
                 <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
@@ -445,20 +474,47 @@ export function PdfCanvasViewer({
             </div>
           ) : (
             <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => save(false)}
-                disabled={saving}
-                className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition", light ? "border-slate-200 text-slate-700 hover:bg-slate-100" : "border-white/10 text-slate-200 hover:bg-white/10")}
-              >
-                <BookmarkCheck size={13} /> Save progress
-              </button>
-              <button
-                onClick={() => save(true)}
-                disabled={saving}
-                className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3 py-1.5 text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
-              >
-                <Check size={13} /> Mark complete
-              </button>
+              {confirmingComplete ? (
+                <>
+                  <span className={light ? "text-slate-600" : "text-slate-300"}>
+                    Finish this lesson? It locks and the next one starts its wait.
+                  </span>
+                  <button
+                    onClick={() => setConfirmingComplete(false)}
+                    disabled={saving}
+                    className={cn("rounded-lg border px-3 py-1.5 transition", light ? "border-slate-200 text-slate-700 hover:bg-slate-100" : "border-white/10 text-slate-200 hover:bg-white/10")}
+                  >
+                    Not yet
+                  </button>
+                  <button
+                    onClick={() => {
+                      setConfirmingComplete(false);
+                      void save(true);
+                    }}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3 py-1.5 text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
+                  >
+                    <Check size={13} /> {saving ? "Saving..." : "Yes, complete it"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => save(false)}
+                    disabled={saving}
+                    className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition", light ? "border-slate-200 text-slate-700 hover:bg-slate-100" : "border-white/10 text-slate-200 hover:bg-white/10")}
+                  >
+                    <BookmarkCheck size={13} /> Save progress
+                  </button>
+                  <button
+                    onClick={() => setConfirmingComplete(true)}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3 py-1.5 text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
+                  >
+                    <Check size={13} /> Mark complete
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
