@@ -10,7 +10,8 @@ export default function TeacherLayout({
 }) {
   const pathname = usePathname();
   // The AI Assistant takes over the whole viewport — no sidebar, no topbar.
-  if (pathname?.startsWith("/teacher/ai")) {
+  // Everything under /teacher is the assistant except the progress page.
+  if (!pathname?.startsWith("/teacher/progress")) {
     return <>{children}</>;
   }
   return <DashboardShell role="teacher">{children}</DashboardShell>;

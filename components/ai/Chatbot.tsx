@@ -44,6 +44,11 @@ import {
   streamTeacherAI,
 } from "@/lib/api";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
+import {
+  gradePath,
+  TEACHER_FAIR,
+  TEACHER_HOME,
+} from "@/lib/teacher-routes";
 import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/types";
 
 // The chat lives in one browser tab for a whole class. A stray refresh used to
@@ -55,10 +60,8 @@ const CHAT_STATE_KEY = "imt_teacher_chat_v1";
 const PANE_WIDTH_KEY = "imt_lesson_pane_width";
 
 type SavedChat = {
-  selectedGrade: number | null;
   messages: AIMessage[];
   lastLessonId: string | null;
-  showFairProjects: boolean;
 };
 
 function clearChatSession() {
@@ -232,7 +235,17 @@ function isMobileViewport(): boolean {
   return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
 }
 
-export function Chatbot() {
+// The route decides which grade is in play (and whether this is the ICT Fair
+// view); the component never picks one on its own, so Back and Forward move
+// through the session the way a teacher expects.
+export function Chatbot({
+  grade = null,
+  fair = false,
+}: {
+  grade?: number | null;
+  fair?: boolean;
+} = {}) {
+  const router = useRouter();
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -246,7 +259,7 @@ export function Chatbot() {
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lessonsLoaded, setLessonsLoaded] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
+  const selectedGrade = grade;
   const [session, setSession] = useState<Session | null>(null);
   // The teacher experience is light-only.
   const light = true;
@@ -256,7 +269,7 @@ export function Chatbot() {
   // grounding, no progress tracking.
   const [fairProjects, setFairProjects] = useState<FairProject[]>([]);
   const [fairViewer, setFairViewer] = useState<FairProject | null>(null);
-  const [showFairProjects, setShowFairProjects] = useState(false);
+  const showFairProjects = fair;
   // Lesson ids with a pending access request to the super-admin.
   const [requestedLessonIds, setRequestedLessonIds] = useState<Set<string>>(
     () => new Set()
@@ -291,9 +304,7 @@ export function Chatbot() {
       const raw = window.sessionStorage.getItem(CHAT_STATE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SavedChat>;
-        if (typeof saved.selectedGrade === "number") setSelectedGrade(saved.selectedGrade);
         if (Array.isArray(saved.messages)) setMessages(saved.messages);
-        if (saved.showFairProjects) setShowFairProjects(true);
         pendingLessonIdRef.current = saved.lastLessonId ?? null;
       }
       const width = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
@@ -308,16 +319,14 @@ export function Chatbot() {
     if (!restored) return;
     try {
       const payload: SavedChat = {
-        selectedGrade,
         messages,
         lastLessonId: lastLesson?.id ?? null,
-        showFairProjects,
       };
       window.sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(payload));
     } catch {
       /* quota / private mode — the session just won't survive a refresh */
     }
-  }, [restored, selectedGrade, messages, lastLesson, showFairProjects]);
+  }, [restored, messages, lastLesson]);
 
   // The restored lesson id only becomes a Lesson once the list has loaded.
   useEffect(() => {
@@ -560,7 +569,7 @@ export function Chatbot() {
       pushAssistant(lessonLockMessage(lesson), { sourceRef: lesson.title });
       return;
     }
-    setShowFairProjects(false);
+    if (showFairProjects) router.push(gradePath(lesson.grade));
     setOpenedLesson(lesson);
     setLastLesson(lesson);
     setOpenedSlide(1);
@@ -715,19 +724,18 @@ export function Chatbot() {
   const gradeLessons =
     selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
 
+  // Picking a grade is a navigation: /teacher -> /teacher/grade-7.
   function chooseGrade(grade: number) {
-    setShowFairProjects(false);
-    setSelectedGrade(grade);
     setOpenedLesson(null);
     setLastLesson(null);
+    router.push(gradePath(grade));
   }
 
-  // Enter ICT Fair mode: show the project grid in the main area.
+  // Enter ICT Fair mode: its own route, so Back returns to the grade.
   function openFairProjects() {
-    setShowFairProjects(true);
-    setSelectedGrade(null);
     setOpenedLesson(null);
     setFullscreenLesson(null);
+    router.push(TEACHER_FAIR);
   }
 
   // Open a single project in the full-screen protected viewer.
@@ -747,7 +755,6 @@ export function Chatbot() {
       openLesson(fresh);
       return;
     }
-    setShowFairProjects(false);
     setOpenedLesson(fresh);
   }
 
@@ -785,9 +792,8 @@ export function Chatbot() {
     setViewedSlide(null);
     setLastLesson(null);
     setFullscreenLesson(null);
-    setShowFairProjects(false);
-    setSelectedGrade(null);
     refreshLessons();
+    router.push(TEACHER_HOME);
   }
 
   return (

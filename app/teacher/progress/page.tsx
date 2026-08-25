@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { listLessons, listProgress } from "@/lib/api";
+import { gradePath, TEACHER_HOME } from "@/lib/teacher-routes";
 import { formatDate } from "@/lib/utils";
 import type { Lesson, ProgressEntry } from "@/types";
 
@@ -87,7 +88,7 @@ export default function TeacherProgressPage() {
         subtitle="Your finished lessons and where you left off."
         actions={
           <Link
-            href="/teacher/ai"
+            href={TEACHER_HOME}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3.5 py-2 text-sm font-medium text-white shadow-lg shadow-brand/30 transition hover:brightness-110"
           >
             Back to lessons <ArrowRight size={14} />
@@ -135,7 +136,11 @@ export default function TeacherProgressPage() {
                   </p>
                 </div>
                 <Link
-                  href="/teacher/ai"
+                  href={
+                    inProgressLesson
+                      ? gradePath(inProgressLesson.grade)
+                      : TEACHER_HOME
+                  }
                   className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
                 >
                   Continue

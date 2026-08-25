@@ -1,9 +1,7 @@
-import { Chatbot } from "@/components/ai/Chatbot";
+import { redirect } from "next/navigation";
+import { TEACHER_HOME } from "@/lib/teacher-routes";
 
+// The assistant used to live here; keep old links and bookmarks working.
 export default function TeacherAIPage() {
-  return (
-    <div className="h-screen w-screen overflow-hidden bg-slate-100">
-      <Chatbot />
-    </div>
-  );
+  redirect(TEACHER_HOME);
 }

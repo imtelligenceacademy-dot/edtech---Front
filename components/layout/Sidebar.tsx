@@ -40,7 +40,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { href: "/school-admin/reports", label: "Reports", icon: FileBarChart2 },
   ],
   teacher: [
-    { href: "/teacher/ai", label: "AI Assistant", icon: Sparkles },
+    { href: "/teacher", label: "AI Assistant", icon: Sparkles },
     { href: "/teacher/progress", label: "Progress", icon: TrendingUp },
   ],
 };
