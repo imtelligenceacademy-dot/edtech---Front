@@ -12,7 +12,7 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, stripMarkdown } from "@/lib/utils";
 import { downloadSchoolAIReport, getSession, streamAdminAI } from "@/lib/api";
 import type { AIMessage, Session } from "@/types";
 
@@ -277,7 +277,9 @@ function Bubble({ message, light }: { message: AIMessage; light: boolean }) {
         {isUser ? <UserIcon size={14} /> : <Bot size={14} />}
       </div>
       <div className={cn("max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed", isUser ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/20" : light ? "border border-slate-200 bg-white text-slate-900" : "border border-white/10 bg-white/5 text-slate-100 backdrop-blur")}>
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <p className="whitespace-pre-wrap break-words">
+          {stripMarkdown(message.content)}
+        </p>
       </div>
     </div>
   );
@@ -307,7 +309,9 @@ function ReportMessage({
             : "border border-white/10 bg-white/5 text-slate-100 backdrop-blur"
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <p className="whitespace-pre-wrap break-words">
+          {stripMarkdown(message.content)}
+        </p>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button

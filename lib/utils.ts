@@ -45,3 +45,15 @@ export function initials(name: string) {
     .join("")
     .toUpperCase();
 }
+
+// Both chat surfaces render raw text — the assistant is told never to use
+// Markdown, but providers slip **bold** and ## headings in anyway. Strip the
+// syntax at render time so a teacher never reads asterisks off a projector.
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*/g, "")           // **bold**
+    .replace(/__/g, "")             // __bold__
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // ## headings
+    .replace(/^\s{0,3}\*\s+/gm, "- ")   // * bullets -> plain dashes
+    .replace(/^\s*```.*$/gm, "");   // ``` fences (the code itself stays)
+}

@@ -126,6 +126,10 @@ export interface ProgressEntry {
   lessonId: string;
   status: LessonStatus;
   percentComplete: number;
+  // Where the teacher actually stopped. Absent on rows last saved before
+  // slide positions were recorded.
+  lastSlide?: number | null;
+  slideTotal?: number | null;
   lastOpenedAt?: string;
   watchdog: WatchdogStatus;
   watchdogMessage?: string;

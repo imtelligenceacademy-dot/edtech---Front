@@ -22,6 +22,9 @@ const API_BASE_URL =
 
 type RequestOptions = RequestInit & { skipRefresh?: boolean };
 const ACCESS_TOKEN_KEY = "imt_access_token";
+// The signed-in role, remembered so the landing page can send someone straight
+// back into the app on Back without first waiting on /api/auth/me.
+const ROLE_KEY = "imt_role";
 
 function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -36,6 +39,16 @@ function storeAccessToken(token?: string | null) {
 function clearAccessToken() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(ROLE_KEY);
+}
+
+// The last signed-in role, or null when there's no local session to resume.
+export function rememberedHomePath(): string | null {
+  if (typeof window === "undefined") return null;
+  const token = window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  const role = window.localStorage.getItem(ROLE_KEY) as Role | null;
+  if (!token || !role) return null;
+  return homePathFor(role);
 }
 
 function withAuthHeaders(headers?: HeadersInit): Headers {
@@ -94,6 +107,11 @@ export async function apiFetch<T>(
       return apiFetch<T>(path, { ...options, skipRefresh: true });
     }
   }
+
+  // A 401 the refresh couldn't rescue means the stored token is dead. Drop it,
+  // or the landing page would keep bouncing the visitor into an app they can no
+  // longer talk to instead of showing them the sign-in form.
+  if (response.status === 401) clearAccessToken();
 
   return parseResponse<T>(response);
 }
@@ -200,6 +218,11 @@ export async function login(email: string, password: string): Promise<Session> {
     skipRefresh: true,
   });
   storeAccessToken(session.accessToken);
+  try {
+    window.localStorage.setItem(ROLE_KEY, session.role);
+  } catch {
+    /* storage disabled — the session still works, Back just costs a round-trip */
+  }
   return session;
 }
 

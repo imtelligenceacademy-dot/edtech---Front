@@ -31,7 +31,7 @@ import {
   PanelRightOpen,
   Sparkles,
 } from "lucide-react";
-import { cn, initials } from "@/lib/utils";
+import { cn, initials, stripMarkdown } from "@/lib/utils";
 import {
   getSession,
   logout,
@@ -44,7 +44,7 @@ import {
   streamTeacherAI,
 } from "@/lib/api";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
-import type { AIMessage, FairProject, Lesson, Session } from "@/types";
+import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/types";
 
 // The chat lives in one browser tab for a whole class. A stray refresh used to
 // wipe the session, so grade + transcript + the lesson in play are mirrored to
@@ -261,9 +261,9 @@ export function Chatbot() {
   const [requestedLessonIds, setRequestedLessonIds] = useState<Set<string>>(
     () => new Set()
   );
-  // Self-reported completion per lesson, so the welcome screen can offer to
-  // resume ("you're 40% through") instead of just "open".
-  const [percentByLesson, setPercentByLesson] = useState<Record<string, number>>({});
+  // Self-reported position per lesson, so the welcome screen can offer to
+  // resume ("you stopped on slide 8 of 11") instead of just "open".
+  const [progressByLesson, setProgressByLesson] = useState<Record<string, ProgressEntry>>({});
   // The teacher is reading back through the transcript — don't yank them to the
   // bottom while a reply streams in.
   const [atBottom, setAtBottom] = useState(true);
@@ -438,7 +438,7 @@ export function Chatbot() {
       await streamTeacherAI(
         {
           message: text,
-          lessonId: openedLesson?.id ?? null,
+          lessonId: lessonForQuestions()?.id ?? null,
           currentSlide: viewedSlide,
           history,
         },
@@ -532,11 +532,7 @@ export function Chatbot() {
 
   function refreshProgress() {
     listProgress()
-      .then((rows) =>
-        setPercentByLesson(
-          Object.fromEntries(rows.map((r) => [r.lessonId, r.percentComplete]))
-        )
-      )
+      .then((rows) => setProgressByLesson(Object.fromEntries(rows.map((r) => [r.lessonId, r]))))
       .catch(() => {});
   }
 
@@ -699,6 +695,18 @@ export function Chatbot() {
   const panelLesson = panelTarget
     ? lessons.find((l) => l.id === panelTarget.id) ?? panelTarget
     : null;
+
+  // The lesson a question is grounded in. With the viewer closed the teacher is
+  // still working on a lesson — the one they last had open, or the one they're
+  // up to — so questions aren't answered with "open a lesson first". Only an
+  // available lesson counts: the backend refuses locked and completed ones.
+  function lessonForQuestions(): Lesson | null {
+    if (openedLesson) return openedLesson;
+    const isOpenable = (l: Lesson) => (l.accessStatus ?? "available") === "available";
+    const last = lastLesson ? lessons.find((l) => l.id === lastLesson.id) : undefined;
+    if (last && isOpenable(last)) return last;
+    return [...gradeLessons].sort(byLessonNo).find(isOpenable) ?? null;
+  }
 
   // Grades the teacher actually has lessons for, and the lessons in the chosen one.
   const availableGrades = Array.from(new Set(lessons.map((l) => l.grade))).sort(
@@ -968,7 +976,7 @@ export function Chatbot() {
             <WelcomeScreen
               lessons={gradeLessons}
               grade={selectedGrade}
-              percentByLesson={percentByLesson}
+              progressByLesson={progressByLesson}
               onOpenLesson={openLesson}
               onRequestAccess={requestAccess}
               onPrompt={(text) => send(text)}
@@ -1344,7 +1352,7 @@ function GradeGate({
 function WelcomeScreen({
   lessons,
   grade,
-  percentByLesson,
+  progressByLesson,
   onOpenLesson,
   onRequestAccess,
   onPrompt,
@@ -1353,7 +1361,7 @@ function WelcomeScreen({
 }: {
   lessons: Lesson[];
   grade: number;
-  percentByLesson: Record<string, number>;
+  progressByLesson: Record<string, ProgressEntry>;
   onOpenLesson: (lesson: Lesson) => void;
   onRequestAccess: (lesson: Lesson) => void;
   onPrompt: (text: string) => void;
@@ -1370,7 +1378,16 @@ function WelcomeScreen({
   const upcoming = ordered.filter(
     (l) => l.accessStatus !== "completed" && l.id !== current?.id
   );
-  const percent = current ? percentByLesson[current.id] ?? 0 : 0;
+  const currentProgress = current ? progressByLesson[current.id] : undefined;
+  const percent = currentProgress?.percentComplete ?? 0;
+  // Teachers navigate by slide, so say which one they stopped on. Rows saved
+  // before slide positions were recorded only have the percentage.
+  const position =
+    currentProgress?.lastSlide && currentProgress.slideTotal
+      ? `Slide ${currentProgress.lastSlide} of ${currentProgress.slideTotal}`
+      : percent > 0
+      ? `${percent}% read`
+      : null;
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center py-6 text-center sm:py-10">
@@ -1429,8 +1446,8 @@ function WelcomeScreen({
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
                 <div className="h-full bg-brand" style={{ width: `${percent}%` }} />
               </div>
-              <span className="w-20 text-right text-[11px] tabular-nums text-slate-500">
-                {percent}% read
+              <span className="shrink-0 text-right text-[11px] tabular-nums text-slate-500">
+                {position}
               </span>
             </div>
           )}
@@ -1694,7 +1711,7 @@ function MessageBubble({
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(stripMarkdown(message.content));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -1727,7 +1744,9 @@ function MessageBubble({
               : "border border-white/10 bg-white/5 text-slate-100 backdrop-blur"
           )}
         >
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          <p className="whitespace-pre-wrap break-words">
+            {stripMarkdown(message.content)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 px-1">
             {!isUser && (

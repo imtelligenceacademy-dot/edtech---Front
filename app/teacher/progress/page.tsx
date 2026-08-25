@@ -27,6 +27,13 @@ function isCompleted(p: ProgressEntry): boolean {
   return p.status === "completed" || p.percentComplete >= 100;
 }
 
+// Teachers navigate by slide, so name the slide they stopped on. Rows saved
+// before slide positions were recorded only carry the percentage.
+function positionLabel(p: ProgressEntry): string {
+  if (p.lastSlide && p.slideTotal) return `Slide ${p.lastSlide} of ${p.slideTotal}`;
+  return `${p.percentComplete}% read`;
+}
+
 // A teacher only ever sees their own finished work plus the one lesson they
 // still have open — never the lessons ahead of them, and never the watchdog /
 // "late" signals, which exist for administrators.
@@ -96,7 +103,13 @@ export default function TeacherProgressPage() {
         />
         <StatCard
           label="Currently open"
-          value={inProgress ? `${inProgress.percentComplete}%` : "—"}
+          value={
+            inProgress
+              ? inProgress.lastSlide && inProgress.slideTotal
+                ? `Slide ${inProgress.lastSlide}`
+                : `${inProgress.percentComplete}%`
+              : "—"
+          }
           delta={
             inProgress
               ? inProgressLesson?.title ?? "In progress"
@@ -135,8 +148,8 @@ export default function TeacherProgressPage() {
                     style={{ width: `${inProgress.percentComplete}%` }}
                   />
                 </div>
-                <span className="w-24 text-right text-xs tabular-nums text-slate-500">
-                  {inProgress.percentComplete}% read
+                <span className="shrink-0 text-right text-xs tabular-nums text-slate-500">
+                  {positionLabel(inProgress)}
                 </span>
               </div>
             </div>
