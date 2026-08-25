@@ -2,6 +2,7 @@
 
 import type {
   AccessRequest,
+  ChatThread,
   FairProject,
   Lesson,
   ProgressEntry,
@@ -12,6 +13,7 @@ import type {
   Session,
   TeacherAccess,
   TeacherLessonAccessRow,
+  StoredChatMessage,
   UploadedFile,
   User,
   UserStatus,
@@ -330,6 +332,50 @@ export function listLessons() {
 // second-screen presenter window.
 export function getLesson(lessonId: string) {
   return apiFetch<Lesson>(`/api/lessons/${lessonId}`);
+}
+
+// --- Teacher chat history (one thread per lesson) -------------------------- #
+
+// A teacher's own thread for one lesson. `teacherId` is a super-admin extra;
+// the API refuses it for anyone else.
+export function listChatMessages(lessonId: string, teacherId?: string) {
+  const params = new URLSearchParams({ lessonId });
+  if (teacherId) params.set("teacherId", teacherId);
+  return apiFetch<StoredChatMessage[]>(`/api/chat/messages?${params}`);
+}
+
+export function clearChatMessages(lessonId: string) {
+  return apiFetch<void>(`/api/chat/messages?lessonId=${encodeURIComponent(lessonId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function listChatThreads(teacherId?: string) {
+  const query = teacherId ? `?teacherId=${encodeURIComponent(teacherId)}` : "";
+  return apiFetch<ChatThread[]>(`/api/chat/threads${query}`);
+}
+
+// Every stored message as JSON Lines. Streamed by the API, so a year of chat is
+// never assembled in memory at either end.
+export async function downloadChatExport(retried = false): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/chat/export`, {
+    credentials: "include",
+    headers: withAuthHeaders(),
+  });
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return downloadChatExport(true);
+  }
+  if (!res.ok) throw new Error("Could not export the chat history.");
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "im-telligence-chats.jsonl";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 // Fully delete a lesson (its PDFs, assignments, progress, access requests).

@@ -33,6 +33,7 @@ import {
   Monitor,
   MonitorX,
   BookmarkCheck,
+  Trash2,
 } from "lucide-react";
 import { cn, initials, stripMarkdown } from "@/lib/utils";
 import {
@@ -40,6 +41,8 @@ import {
   logout,
   listLessons,
   listFairProjects,
+  clearChatMessages,
+  listChatMessages,
   listMyAccessRequests,
   listProgress,
   requestLessonAccess,
@@ -56,9 +59,8 @@ import { openPresentChannel, type PresentChannel } from "@/lib/present-channel";
 import { openPresenterWindow, placeOnExternalScreen } from "@/lib/window-placement";
 import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/types";
 
-// The chat lives in one browser tab for a whole class. A stray refresh used to
-// wipe the session, so grade + transcript + the lesson in play are mirrored to
-// sessionStorage and restored on mount ("New chat" and sign-out clear it).
+// The lesson in play is remembered per tab so a refresh mid-class doesn't lose
+// it. The conversation itself lives on the server, one thread per lesson.
 const CHAT_STATE_KEY = "imt_teacher_chat_v1";
 // Width of the lesson viewer as a % of the window — a per-teacher preference,
 // so it outlives the tab.
@@ -68,7 +70,6 @@ const PANE_WIDTH_KEY = "imt_lesson_pane_width";
 const LAST_GRADE_KEY = "imt_last_grade";
 
 type SavedChat = {
-  messages: AIMessage[];
   lastLessonId: string | null;
 };
 
@@ -326,6 +327,8 @@ export function Chatbot({
   const [presentBlocked, setPresentBlocked] = useState(false);
   const presentingRef = useRef<typeof presenting>(null);
   presentingRef.current = presenting;
+  // The lesson in play, readable from callbacks that run outside render.
+  const contextLessonRef = useRef<string | null>(null);
   const presentWinRef = useRef<Window | null>(null);
   const presentChannelRef = useRef<PresentChannel | null>(null);
   const byeTimerRef = useRef<number | null>(null);
@@ -333,8 +336,35 @@ export function Chatbot({
   // empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
   const pendingLessonIdRef = useRef<string | null>(null);
+  // Threads already pulled from the server this session.
+  const loadedThreadsRef = useRef<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const gradeLessons =
+    selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
+
+  // The lesson a question is grounded in, and the thread it is stored under.
+  // With the viewer closed the teacher is still working on a lesson — the one
+  // they last had open, or the one they're up to — so questions aren't answered
+  // with "open a lesson first". Only an available lesson counts: the backend
+  // refuses locked and completed ones.
+  const contextLesson = ((): Lesson | null => {
+    if (openedLesson) return openedLesson;
+    if (presenting) return presenting.lesson;
+    const isOpenable = (l: Lesson) => (l.accessStatus ?? "available") === "available";
+    const last = lastLesson ? lessons.find((l) => l.id === lastLesson.id) : undefined;
+    if (last && isOpenable(last)) return last;
+    return [...gradeLessons].sort(byLessonNo).find(isOpenable) ?? null;
+  })();
+  const contextLessonId = contextLesson?.id ?? null;
+
+  // Only this lesson's turns are on screen; the rest stay in memory for when
+  // the teacher switches back.
+  const visibleMessages = messages.filter(
+    (m) => (m.lessonId ?? null) === contextLessonId
+  );
+  contextLessonRef.current = contextLessonId;
 
   // Restore the previous session (a refresh mid-class shouldn't cost the chat).
   useEffect(() => {
@@ -342,7 +372,6 @@ export function Chatbot({
       const raw = window.sessionStorage.getItem(CHAT_STATE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<SavedChat>;
-        if (Array.isArray(saved.messages)) setMessages(saved.messages);
         pendingLessonIdRef.current = saved.lastLessonId ?? null;
       }
       const width = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
@@ -356,15 +385,12 @@ export function Chatbot({
   useEffect(() => {
     if (!restored) return;
     try {
-      const payload: SavedChat = {
-        messages,
-        lastLessonId: lastLesson?.id ?? null,
-      };
+      const payload: SavedChat = { lastLessonId: lastLesson?.id ?? null };
       window.sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(payload));
     } catch {
-      /* quota / private mode — the session just won't survive a refresh */
+      /* quota / private mode — the lesson just won't survive a refresh */
     }
-  }, [restored, messages, lastLesson]);
+  }, [restored, lastLesson]);
 
   // A teacher assigned to a single grade has nothing to pick: send them
   // through. replace(), so Back doesn't drop them on a gate they never saw.
@@ -380,6 +406,43 @@ export function Chatbot({
   useEffect(() => {
     if (selectedGrade !== null) rememberGrade(selectedGrade);
   }, [selectedGrade]);
+
+  // Pull the stored thread for the lesson in play, once per lesson. Local
+  // turns (the app's own "Opening ..." lines, and anything asked since) keep
+  // their place because both are tagged with the same lesson.
+  useEffect(() => {
+    if (!contextLessonId || loadedThreadsRef.current.has(contextLessonId)) return;
+    const lessonId = contextLessonId;
+    loadedThreadsRef.current.add(lessonId);
+    // No cancellation guard on purpose: React remounts effects in development,
+    // and throwing away a resolved fetch would leave the thread empty. The
+    // merge below is keyed by message id, so applying it twice is a no-op.
+    listChatMessages(lessonId)
+      .then((rows) => {
+        if (rows.length === 0) return;
+        const stored: AIMessage[] = rows.map((r) => ({
+          id: r.id,
+          role: r.role,
+          content: r.content,
+          timestamp: r.createdAt,
+          sourceRef: r.sourceRef ?? undefined,
+          lessonId: r.lessonId,
+        }));
+        setMessages((prev) => {
+          const known = new Set(prev.map((m) => m.id));
+          const fresh = stored.filter((m) => !known.has(m.id));
+          if (fresh.length === 0) return prev;
+          // History belongs before whatever this session has already added.
+          const mine = prev.filter((m) => (m.lessonId ?? null) === lessonId);
+          const others = prev.filter((m) => (m.lessonId ?? null) !== lessonId);
+          return [...others, ...fresh, ...mine];
+        });
+      })
+      .catch(() => {
+        // Unreadable history shouldn't block the lesson; allow a later retry.
+        loadedThreadsRef.current.delete(lessonId);
+      });
+  }, [contextLessonId]);
 
   // The restored lesson id only becomes a Lesson once the list has loaded.
   useEffect(() => {
@@ -471,6 +534,7 @@ export function Chatbot({
         role: "assistant",
         content,
         timestamp: new Date().toISOString(),
+        lessonId: contextLessonRef.current,
         ...extras,
       },
     ]);
@@ -479,9 +543,9 @@ export function Chatbot({
   // `retry` re-asks a question that's already in the transcript, so the failed
   // turn (and its error reply) must be trimmed off the history first.
   async function answerQuestion(text: string, retry = false) {
-    let prior = messages;
+    let prior = visibleMessages;
     if (retry) {
-      prior = [...messages];
+      prior = [...visibleMessages];
       while (prior.length && prior[prior.length - 1].role === "assistant") prior.pop();
       if (prior.length && prior[prior.length - 1].role === "user") prior.pop();
     }
@@ -490,6 +554,7 @@ export function Chatbot({
       .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
     const assistantId = `a_${Date.now()}`;
+    const threadId = contextLessonId;
     let started = false;
     let sourceRef: string | undefined;
     const controller = new AbortController();
@@ -500,7 +565,7 @@ export function Chatbot({
       await streamTeacherAI(
         {
           message: text,
-          lessonId: lessonForQuestions()?.id ?? null,
+          lessonId: contextLessonId,
           currentSlide: viewedSlide,
           history,
         },
@@ -520,6 +585,7 @@ export function Chatbot({
                   role: "assistant",
                   content: delta,
                   timestamp: new Date().toISOString(),
+                  lessonId: threadId,
                 },
               ]);
             } else {
@@ -584,6 +650,20 @@ export function Chatbot({
     });
     setThinking(true);
     void answerQuestion(text, true);
+  }
+
+  // Wipe this lesson's conversation, on the server and on screen. Other
+  // lessons' threads are untouched.
+  async function clearLessonChat() {
+    const lesson = contextLessonRef.current;
+    if (!lesson) return;
+    setMessages((prev) => prev.filter((m) => (m.lessonId ?? null) !== lesson));
+    setFailedPrompt(null);
+    try {
+      await clearChatMessages(lesson);
+    } catch {
+      pushAssistant("I couldn't clear this lesson's chat just now. Please try again.");
+    }
   }
 
   // Re-pull lesson access state (statuses shift after a completion/unlock).
@@ -729,6 +809,7 @@ export function Chatbot({
       role: "user",
       content: text,
       timestamp: new Date().toISOString(),
+      lessonId: contextLessonId,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -764,7 +845,7 @@ export function Chatbot({
     void answerQuestion(text);
   }
 
-  const isEmpty = messages.length === 0;
+  const isEmpty = visibleMessages.length === 0;
 
   // The lesson the side panel acts on: whatever is open, else the last one
   // opened - resolved against `lessons` so its access status stays current.
@@ -773,24 +854,10 @@ export function Chatbot({
     ? lessons.find((l) => l.id === panelTarget.id) ?? panelTarget
     : null;
 
-  // The lesson a question is grounded in. With the viewer closed the teacher is
-  // still working on a lesson — the one they last had open, or the one they're
-  // up to — so questions aren't answered with "open a lesson first". Only an
-  // available lesson counts: the backend refuses locked and completed ones.
-  function lessonForQuestions(): Lesson | null {
-    if (openedLesson) return openedLesson;
-    const isOpenable = (l: Lesson) => (l.accessStatus ?? "available") === "available";
-    const last = lastLesson ? lessons.find((l) => l.id === lastLesson.id) : undefined;
-    if (last && isOpenable(last)) return last;
-    return [...gradeLessons].sort(byLessonNo).find(isOpenable) ?? null;
-  }
-
   // Grades the teacher actually has lessons for, and the lessons in the chosen one.
   const availableGrades = Array.from(new Set(lessons.map((l) => l.grade))).sort(
     (a, b) => a - b
   );
-  const gradeLessons =
-    selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
 
   // Picking a grade is a navigation: /teacher -> /teacher/grade-7.
   function chooseGrade(grade: number) {
@@ -1223,7 +1290,7 @@ export function Chatbot({
             />
           ) : (
             <div className="mx-auto flex max-w-3xl flex-col gap-6">
-              {messages.map((m) => (
+              {visibleMessages.map((m) => (
                 <MessageBubble key={m.id} message={m} light={light} />
               ))}
               {failedPrompt && !thinking && !streaming && (
@@ -1269,7 +1336,7 @@ export function Chatbot({
         )}
 
         {/* Reading back through the transcript while a reply streams in */}
-        {!atBottom && messages.length > 0 && (
+        {!atBottom && visibleMessages.length > 0 && (
           <div className="pointer-events-none relative z-20">
             <button
               onClick={jumpToLatest}
@@ -1375,7 +1442,8 @@ export function Chatbot({
               >
                 Shift+Enter
               </kbd>{" "}
-              for newline
+              for newline · saved to this lesson so you can come back to it,
+              visible only to you and the platform owner
             </p>
           </div>
         </div>
@@ -1460,6 +1528,19 @@ export function Chatbot({
                 >
                   <Maximize2 size={13} /> Full screen
                 </button>
+                {contextLessonId && (
+                  <button
+                    onClick={clearLessonChat}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs transition",
+                      light
+                        ? "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                        : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    )}
+                  >
+                    <Trash2 size={13} /> Clear this lesson&apos;s chat
+                  </button>
+                )}
                 {(panelLesson.accessStatus ?? "available") === "completed" && (
                   <p
                     className={cn(

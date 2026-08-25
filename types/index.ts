@@ -18,6 +18,26 @@ export interface User {
   lastLoginAt?: string;
 }
 
+// A stored turn of a teacher's conversation, keyed to the lesson it was about.
+export interface StoredChatMessage {
+  id: string;
+  teacherId: string;
+  lessonId: string;
+  role: "user" | "assistant";
+  content: string;
+  sourceRef?: string | null;
+  createdAt: string;
+}
+
+// One lesson's thread, as listed for the super-admin.
+export interface ChatThread {
+  lessonId: string;
+  lessonTitle?: string | null;
+  grade?: number | null;
+  messageCount: number;
+  lastMessageAt?: string | null;
+}
+
 export interface FairProject {
   id: string;
   title: string;
@@ -186,6 +206,9 @@ export interface AIMessage {
   cached?: boolean;
   sourceRef?: string; // e.g. "Grade 8 Lesson 2, Slide 4"
   timestamp: string;
+  // The lesson this turn belongs to. Conversations are one thread per lesson,
+  // so the chat shows only the messages tagged with the lesson in play.
+  lessonId?: string | null;
 }
 
 export interface Session {

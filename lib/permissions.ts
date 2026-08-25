@@ -15,6 +15,7 @@ export type Capability =
   | "export-reports"
   | "view-global-security"
   | "view-school-security"
+  | "view-teacher-chats"
   | "view-assigned-lessons"
   | "use-ai-assistant";
 
@@ -31,6 +32,7 @@ const matrix: Record<Role, Capability[]> = {
     "export-reports",
     "view-global-security",
     "view-school-security",
+    "view-teacher-chats",
   ],
   "school-admin": [
     // Monitoring-only. No approvals, no uploads, no user creation, no assignments.
