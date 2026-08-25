@@ -56,7 +56,7 @@ export function PdfCanvasViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const wrappersRef = useRef<HTMLDivElement[]>([]);
   const renderedRef = useRef<Set<number>>(new Set());
-  const ratiosRef = useRef<Map<number, number>>(new Map());
+
   // fitScale = base scale that makes a page fill the container width.
   // zoom = user multiplier on top of that. Effective scale = fitScale * zoom.
   const [fitScale, setFitScale] = useState(1);
@@ -172,7 +172,6 @@ export function PdfCanvasViewer({
     let cancelled = false;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     renderedRef.current.clear();
-    ratiosRef.current.clear();
     wrappersRef.current = [];
     container.innerHTML = "";
 
@@ -220,26 +219,6 @@ export function PdfCanvasViewer({
       { root: container, rootMargin: "400px 0px" }
     );
 
-    // Current-slide tracking: which page occupies the most of the viewport.
-    const track = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          const n = Number((e.target as HTMLElement).dataset.slide);
-          ratiosRef.current.set(n, e.isIntersecting ? e.intersectionRatio : 0);
-        }
-        let best = 1;
-        let bestRatio = -1;
-        ratiosRef.current.forEach((ratio, slide) => {
-          if (ratio > bestRatio) {
-            bestRatio = ratio;
-            best = slide;
-          }
-        });
-        setCurrent(best);
-      },
-      { root: container, threshold: [0, 0.25, 0.5, 0.75, 1] }
-    );
-
     for (let n = 1; n <= doc.numPages; n++) {
       const d = dimsRef.current[n];
       if (!d) continue;
@@ -252,17 +231,50 @@ export function PdfCanvasViewer({
       container.appendChild(wrapper);
       wrappersRef.current.push(wrapper);
       lazy.observe(wrapper);
-      track.observe(wrapper);
     }
 
     return () => {
       cancelled = true;
       lazy.disconnect();
-      track.disconnect();
     };
   }, [status, effScale, useNativeMobileViewer, bare]);
 
   useBlockSaveShortcuts();
+
+  // Which page is in view, computed from the scroll position: the page whose
+  // top has passed the middle of the viewport. Driven by scroll events and a
+  // slow poll, so it keeps reporting even in a window the browser considers
+  // inactive — a projector the teacher isn't clicking on.
+  useEffect(() => {
+    if (status !== "ready" || useNativeMobileViewer) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const middle = container.scrollTop + container.clientHeight / 2;
+      const wrappers = wrappersRef.current;
+      let page = 1;
+      for (let i = 0; i < wrappers.length; i++) {
+        if (wrappers[i].offsetTop <= middle) page = i + 1;
+        else break;
+      }
+      setCurrent((prev) => (prev === page ? prev : page));
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    const poll = window.setInterval(update, 500);
+    update();
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      window.clearInterval(poll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [status, effScale, useNativeMobileViewer]);
 
   // Jump to a page asked for from outside (the presenting controls). Pressing
   // next should land on the page at once, the way a slide deck does — and an
