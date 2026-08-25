@@ -842,6 +842,13 @@ export function Chatbot({
       if (message.type === "ready") {
         setPresenting((prev) => (prev ? { ...prev, total: message.total } : prev));
       }
+      // The teacher scrolled the projected window itself: follow it here, so
+      // the counter, the progress they save and the slide the assistant
+      // answers about are all the page the class is actually looking at.
+      if (message.type === "page") {
+        setPresenting((prev) => (prev ? { ...prev, page: message.page } : prev));
+        setViewedSlide(message.page);
+      }
       if (message.type === "bye") {
         byeTimerRef.current = window.setTimeout(() => {
           byeTimerRef.current = null;

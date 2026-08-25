@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { PresentedPage } from "@/components/lesson-viewer/PresentedPage";
+import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import { getLesson } from "@/lib/api";
 import { openPresentChannel, type PresentChannel } from "@/lib/present-channel";
 import type { Lesson } from "@/types";
 
-// The window the class sees. It is opened by the teacher's window, lives on the
-// projector, and shows one lesson page and nothing else. It never writes
-// progress and never renders the assistant — that is the whole point of it.
+// The window the class sees: the lesson, scrollable like any presentation, and
+// nothing else — no chat, no controls, no branding. The teacher scrolls it
+// directly, and the page they land on is reported back so their own window
+// stays in step. It never writes progress; that stays with the teacher.
 export default function PresentLessonPage({
   params,
 }: {
@@ -18,9 +19,13 @@ export default function PresentLessonPage({
   const { lessonId } = params;
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  // A page the teacher asked us to jump to (from their ‹ › controls).
+  const [goToPage, setGoToPage] = useState<number | undefined>(undefined);
   const [showHint, setShowHint] = useState(true);
   const channelRef = useRef<PresentChannel | null>(null);
+  // The last page either side knows about, so scrolling here and jumping from
+  // there don't echo each other back and forth.
+  const syncedPageRef = useRef(0);
 
   // The API refuses a lesson this teacher can't open, so this is the access
   // check as well as the way we learn which file to render.
@@ -34,7 +39,10 @@ export default function PresentLessonPage({
 
   useEffect(() => {
     const channel = openPresentChannel(lessonId, (message) => {
-      if (message.type === "page") setPage(message.page);
+      if (message.type === "page") {
+        syncedPageRef.current = message.page;
+        setGoToPage(message.page);
+      }
       if (message.type === "stop") window.close();
     });
     channelRef.current = channel;
@@ -52,19 +60,28 @@ export default function PresentLessonPage({
     };
   }, [lessonId]);
 
-  // Full screen needs a gesture in this window, so we ask for one — once, with
-  // a hint that fades out of the way.
+  // Scrolling here moves the teacher's page counter — and with it the slide the
+  // assistant answers about.
+  const reportPage = useCallback((page: number) => {
+    if (page === syncedPageRef.current) return;
+    syncedPageRef.current = page;
+    channelRef.current?.post({ type: "page", page });
+  }, []);
+
+  // Full screen needs a gesture in this window, so ask for one — with a hint
+  // that gets out of the way. Double-click, so it never fights scrolling.
   useEffect(() => {
-    const timer = window.setTimeout(() => setShowHint(false), 6000);
+    const timer = window.setTimeout(() => setShowHint(false), 8000);
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function goFullscreen() {
+  async function toggleFullscreen() {
     setShowHint(false);
     try {
-      await document.documentElement.requestFullscreen();
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
     } catch {
-      /* denied or already full screen — the window is sized to the display anyway */
+      /* denied — the window is already sized to the display anyway */
     }
   }
 
@@ -85,15 +102,20 @@ export default function PresentLessonPage({
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black" onClick={goFullscreen}>
-      <PresentedPage
+    <div
+      className="relative h-screen w-screen overflow-hidden bg-black"
+      onDoubleClick={toggleFullscreen}
+    >
+      <PdfCanvasViewer
         fileId={lesson.fileId}
-        page={page}
+        bare
+        goToPage={goToPage}
+        onSlideChange={reportPage}
         onReady={(total) => channelRef.current?.post({ type: "ready", total })}
       />
       {showHint && (
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-[11px] text-white/70">
-          Click anywhere for full screen
+          Scroll to move through the lesson · double-click for full screen
         </p>
       )}
     </div>

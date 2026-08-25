@@ -31,6 +31,9 @@ export function PdfCanvasViewer({
   onExit,
   onCompleted,
   onSlideChange,
+  onReady,
+  bare = false,
+  goToPage,
 }: {
   fileId: string;
   lessonId?: string;
@@ -40,6 +43,15 @@ export function PdfCanvasViewer({
   onCompleted?: () => void; // fired after the lesson is marked complete
   // Reports the slide currently in view, so the AI can be asked about it.
   onSlideChange?: (slide: number) => void;
+  // Fired once the document is loaded, with its page count.
+  onReady?: (total: number) => void;
+  // Projected on a classroom screen: pages edge to edge on black, and none of
+  // the teacher's chrome (no zoom toolbar, no progress bar) for the class to
+  // read. Scrolling still works — that is how the teacher drives the lesson.
+  bare?: boolean;
+  // Scroll a page into view on command. Changing the value is the instruction;
+  // the teacher's controls use it to jump the projector to a page.
+  goToPage?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrappersRef = useRef<HTMLDivElement[]>([]);
@@ -79,6 +91,12 @@ export function PdfCanvasViewer({
   useEffect(() => {
     if (status === "ready") onSlideChangeRef.current?.(current);
   }, [current, status]);
+
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  useEffect(() => {
+    if (status === "ready" && total > 0) onReadyRef.current?.(total);
+  }, [status, total]);
 
   useEffect(() => {
     const detect = () => {
@@ -132,7 +150,7 @@ export function PdfCanvasViewer({
     if (!container || !first) return;
 
     const recompute = () => {
-      const avail = container.clientWidth - 32; // px padding on each side
+      const avail = container.clientWidth - (bare ? 0 : 32); // px padding each side
       if (avail <= 0) return;
       const s = Math.min(2, Math.max(0.4, avail / first.width));
       setFitScale(+s.toFixed(3));
@@ -141,7 +159,7 @@ export function PdfCanvasViewer({
     const ro = new ResizeObserver(recompute);
     ro.observe(container);
     return () => ro.disconnect();
-  }, [status, useNativeMobileViewer]);
+  }, [status, useNativeMobileViewer, bare]);
 
   // Build page placeholders and lazily render only pages near the viewport.
   useEffect(() => {
@@ -227,7 +245,7 @@ export function PdfCanvasViewer({
       if (!d) continue;
       const wrapper = document.createElement("div");
       wrapper.dataset.slide = String(n);
-      wrapper.className = "mx-auto mb-4";
+      wrapper.className = bare ? "mx-auto mb-1" : "mx-auto mb-4";
       wrapper.style.width = `${Math.floor(d.width * effScale)}px`;
       wrapper.style.height = `${Math.floor(d.height * effScale)}px`;
       wrapper.style.maxWidth = "100%";
@@ -242,9 +260,19 @@ export function PdfCanvasViewer({
       lazy.disconnect();
       track.disconnect();
     };
-  }, [status, effScale, useNativeMobileViewer]);
+  }, [status, effScale, useNativeMobileViewer, bare]);
 
   useBlockSaveShortcuts();
+
+  // Jump to a page asked for from outside (the presenting controls). Pressing
+  // next should land on the page at once, the way a slide deck does — and an
+  // instant scroll is the one thing every browser honours.
+  useEffect(() => {
+    if (!goToPage || status !== "ready") return;
+    const wrapper = wrappersRef.current[goToPage - 1];
+    const container = containerRef.current;
+    if (wrapper && container) container.scrollTop = wrapper.offsetTop;
+  }, [goToPage, status]);
 
   async function save(complete: boolean) {
     if (!lessonId) return;
@@ -378,8 +406,9 @@ export function PdfCanvasViewer({
   }
 
   return (
-    <div className="relative flex h-full flex-col">
-      {/* Zoom toolbar (no download/print/save) */}
+    <div className={cn("relative flex h-full flex-col", bare && "bg-black")}>
+      {/* Zoom toolbar (no download/print/save) — never on the classroom screen */}
+      {!bare && (
       <div className={cn("flex items-center justify-center gap-2 border-b px-3 py-1.5 text-xs", light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-400")}>
         <button className={barBtn} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))} aria-label="Zoom out">
           <ZoomOut size={14} />
@@ -389,18 +418,22 @@ export function PdfCanvasViewer({
           <ZoomIn size={14} />
         </button>
       </div>
+      )}
 
       {/* Page canvases */}
       <div
         ref={containerRef}
         onContextMenu={(e) => e.preventDefault()}
         onDragStart={(e) => e.preventDefault()}
-        className="chat-scroll flex-1 select-none overflow-auto px-4 py-4"
+        className={cn(
+          "chat-scroll flex-1 select-none overflow-auto",
+          bare ? "px-0 py-0" : "px-4 py-4"
+        )}
         style={{ userSelect: "none" }}
       />
 
-      {/* Self-reported progress bar */}
-      {lessonId && status === "ready" && (
+      {/* Self-reported progress bar — the teacher's window only */}
+      {lessonId && !bare && status === "ready" && (
         <div className={cn("flex flex-wrap items-center gap-3 border-t px-4 py-2.5 text-xs", light ? "border-slate-200/60" : "border-white/5")}>
           <span className={light ? "text-slate-600" : "text-slate-300"}>
             You&apos;re on <strong>slide {current}</strong> of {total}
