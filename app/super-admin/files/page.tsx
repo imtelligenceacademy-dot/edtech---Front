@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import {
+  previewUploads,
+  type UploadPreviewRow,
   deleteFairProject,
   deleteUploadedFile,
   fileDownloadUrl,
@@ -53,6 +55,14 @@ export default function FilesPage() {
   const [language, setLanguage] = useState<Lang>("en");
   const [year, setYear] = useState<1 | 2>(2);
   const [dragOver, setDragOver] = useState(false);
+  // Files chosen but not uploaded yet, with what the server says will happen to
+  // them. Nothing is sent until the admin has seen this.
+  const [staged, setStaged] = useState<File[]>([]);
+  const [preview, setPreview] = useState<UploadPreviewRow[] | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  // Per-file outcome of the last upload, so a skipped file is named rather than
+  // counted.
+  const [results, setResults] = useState<{ filename: string; text: string; ok: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "info" | "error"; text: string } | null>(
     null
@@ -179,54 +189,96 @@ export default function FilesPage() {
     }
   }
 
-  async function handleFiles(fileList?: FileList | null) {
+  // Choosing files no longer uploads them: it asks the server what each name
+  // would do, so the answer arrives before the act rather than after it.
+  async function stageFiles(fileList?: FileList | null) {
     if (!fileList || fileList.length === 0) return;
-    const all = Array.from(fileList);
-    const pdfs = all.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+    const pdfs = Array.from(fileList).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
     const oversize = pdfs.filter((f) => f.size > 20 * 1024 * 1024);
-    const toUpload = pdfs.filter((f) => f.size <= 20 * 1024 * 1024);
+    const usable = pdfs.filter((f) => f.size <= 20 * 1024 * 1024);
 
-    if (toUpload.length === 0) {
+    setResults([]);
+    if (usable.length === 0) {
       setMessage({ tone: "error", text: "No valid PDF (≤20 MB) selected." });
       return;
     }
+    setMessage(
+      oversize.length
+        ? { tone: "info", text: `${oversize.length} file(s) over 20 MB were left out.` }
+        : null
+    );
 
+    setStaged(usable);
+    setPreviewing(true);
+    try {
+      setPreview(await previewUploads(usable.map((f) => f.name), language, year));
+    } catch {
+      // Without a preview the admin can still upload; they just don't get the
+      // heads-up.
+      setPreview(null);
+      setMessage({ tone: "info", text: "Couldn't preview these files — you can still upload them." });
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  function cancelStaged() {
+    setStaged([]);
+    setPreview(null);
+    setMessage(null);
+  }
+
+  // Upload the staged files, three at a time, and keep every file's outcome.
+  async function uploadStaged() {
+    if (staged.length === 0) return;
     setBusy(true);
-    let created = 0;
-    let totalAssigned = 0;
-    let skipped = 0;
-    const failed: string[] = [];
+    setResults([]);
+    const outcomes: { filename: string; text: string; ok: boolean }[] = [];
+    let done = 0;
 
-    for (let i = 0; i < toUpload.length; i++) {
-      const file = toUpload[i];
-      setMessage({
-        tone: "info",
-        text: `Uploading ${i + 1} of ${toUpload.length} — ${file.name}…`,
-      });
-      try {
-        const result = await uploadFile(file, language, year);
-        if (result.note) skipped += 1;
-        else {
-          created += 1;
-          totalAssigned += result.assignedCount;
+    async function worker(queue: File[]) {
+      for (;;) {
+        const file = queue.shift();
+        if (!file) return;
+        try {
+          const result = await uploadFile(file, language, year);
+          outcomes.push(
+            result.note
+              ? { filename: file.name, ok: false, text: "stored, but not assigned — name doesn't match the format" }
+              : {
+                  filename: file.name,
+                  ok: true,
+                  text: `${result.lessonTitle ?? "lesson"} · ${result.assignedCount} teacher${
+                    result.assignedCount === 1 ? "" : "s"
+                  }`,
+                }
+          );
+        } catch (err) {
+          outcomes.push({
+            filename: file.name,
+            ok: false,
+            text: err instanceof Error ? err.message : "upload failed",
+          });
         }
-      } catch {
-        failed.push(file.name);
+        done += 1;
+        setMessage({ tone: "info", text: `Uploading ${done} of ${staged.length}…` });
       }
     }
 
+    const queue = [...staged];
+    await Promise.all([worker(queue), worker(queue), worker(queue)]);
+
     await refresh();
     setBusy(false);
-
-    const parts: string[] = [];
-    if (created) parts.push(`${created} lesson${created === 1 ? "" : "s"} created`);
-    if (totalAssigned) parts.push(`${totalAssigned} assignment${totalAssigned === 1 ? "" : "s"} made`);
-    if (skipped) parts.push(`${skipped} skipped (bad name)`);
-    if (oversize.length) parts.push(`${oversize.length} too large`);
-    if (failed.length) parts.push(`${failed.length} failed`);
+    setStaged([]);
+    setPreview(null);
+    setResults(outcomes.sort((a, b) => Number(a.ok) - Number(b.ok)));
+    const failed = outcomes.filter((o) => !o.ok).length;
     setMessage({
-      tone: failed.length ? "error" : "ok",
-      text: parts.length ? parts.join(" · ") : "Nothing to upload.",
+      tone: failed ? "error" : "ok",
+      text: failed
+        ? `${outcomes.length - failed} uploaded · ${failed} need attention`
+        : `${outcomes.length} uploaded`,
     });
   }
 
@@ -391,7 +443,7 @@ export default function FilesPage() {
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              handleFiles(e.dataTransfer.files);
+              stageFiles(e.dataTransfer.files);
             }}
             className={cn(
               "rounded-xl border-2 border-dashed p-10 text-center transition-colors",
@@ -411,7 +463,7 @@ export default function FilesPage() {
                 multiple
                 className="sr-only"
                 onChange={(e) => {
-                  handleFiles(e.target.files);
+                  stageFiles(e.target.files);
                   e.target.value = "";
                 }}
               />
@@ -429,6 +481,91 @@ export default function FilesPage() {
               </p>
             )}
           </div>
+
+          {/* What these files would do, before any of them is uploaded. */}
+          {staged.length > 0 && (
+            <div className="mt-4 rounded-xl border border-slate-200">
+              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+                <p className="text-sm font-medium text-slate-900">
+                  {staged.length} file{staged.length === 1 ? "" : "s"} ready
+                </p>
+                <p className="text-xs text-slate-500">
+                  {previewing ? "Checking names…" : "Nothing has been uploaded yet."}
+                </p>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button variant="secondary" onClick={cancelStaged} disabled={busy}>
+                    Cancel
+                  </Button>
+                  <Button onClick={uploadStaged} disabled={busy || previewing}>
+                    <UploadCloud size={14} />{" "}
+                    {busy ? "Uploading…" : `Upload ${staged.length} file${staged.length === 1 ? "" : "s"}`}
+                  </Button>
+                </div>
+              </div>
+
+              <ul className="divide-y divide-slate-100">
+                {staged.map((file) => {
+                  const row = preview?.find((p) => p.filename === file.name);
+                  const bad = row ? !row.ok : false;
+                  return (
+                    <li key={file.name} className="flex items-start gap-3 px-4 py-2.5">
+                      <FileText
+                        size={14}
+                        className={cn("mt-0.5 shrink-0", bad ? "text-amber-500" : "text-slate-400")}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-slate-800">{file.name}</p>
+                        <p className={cn("text-[11px]", bad ? "text-amber-700" : "text-slate-500")}>
+                          {!row
+                            ? previewing
+                              ? "…"
+                              : "Will be uploaded."
+                            : !row.ok
+                            ? row.note
+                            : `${row.existingLesson ? "Adds to" : "Creates"} “${row.lessonTitle}” · ${
+                                row.teacherNames.length
+                              } teacher${row.teacherNames.length === 1 ? "" : "s"}${
+                                row.teacherNames.length ? `: ${row.teacherNames.join(", ")}` : ""
+                              }`}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <p className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
+                Names must read “Grade 7 micro:bit lesson 04 Step Counter.pdf” —
+                grade, optional course (python / micro:bit), lesson number, then
+                the title. Anything else is stored but assigned to nobody.
+              </p>
+            </div>
+          )}
+
+          {/* Every file's outcome, so a skipped one is named, not counted. */}
+          {results.length > 0 && (
+            <ul className="mt-4 space-y-1.5">
+              {results.map((r) => (
+                <li
+                  key={r.filename}
+                  className={cn(
+                    "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+                    r.ok ? "border-slate-200" : "border-amber-200 bg-amber-50/60"
+                  )}
+                >
+                  {r.ok ? (
+                    <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-emerald-500" />
+                  ) : (
+                    <FileText size={13} className="mt-0.5 shrink-0 text-amber-600" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-slate-800">{r.filename}</span>
+                    <span className={r.ok ? "text-slate-500" : "text-amber-700"}>{r.text}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardBody>
       </Card>
 

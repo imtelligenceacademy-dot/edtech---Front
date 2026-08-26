@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import {
-  assignTeacher,
   deleteLesson,
   listLessons,
   listSchools,
   listUsers,
-  unassignTeacher,
+  putLessonAssignments,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Lesson, School, User } from "@/types";
@@ -132,18 +131,16 @@ export default function AccessControlPage() {
     }
   }
 
+  // One request carrying the whole set for this school. It either applies in
+  // full or not at all — the old loop of one call per teacher could stop
+  // halfway and leave the lesson assigned to some of the chosen teachers while
+  // telling the admin it had failed.
   async function save() {
     if (!lesson) return;
     setSaving(true);
     setError(null);
-    const savedSet = new Set(lesson.assignedTeacherIds);
-    const toAdd = selected.filter((id) => !savedSet.has(id));
-    const toRemove = persistedInSchool.filter((id) => !selected.includes(id));
-
     try {
-      let updated = lesson;
-      for (const id of toAdd) updated = await assignTeacher(lessonId, id);
-      for (const id of toRemove) updated = await unassignTeacher(lessonId, id);
+      const updated = await putLessonAssignments(lessonId, schoolId, selected);
       setLessons((cur) => cur.map((l) => (l.id === updated.id ? updated : l)));
       setAssignments((cur) => ({ ...cur, [updated.id]: updated.assignedTeacherIds }));
       setSaved(true);

@@ -7,6 +7,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
+import { AttentionPanel } from "@/components/super-admin/AttentionPanel";
 import { getSuperAdminOverview, type SuperAdminOverview } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
@@ -52,6 +53,21 @@ export default function SuperAdminDashboard() {
       <PageHeader
         title="Overview"
         subtitle="Platform-wide health, accounts, and activity."
+      />
+
+      <AttentionPanel
+        overview={overview}
+        onResolved={(requestId) =>
+          setOverview((cur) =>
+            cur
+              ? {
+                  ...cur,
+                  accessRequests: cur.accessRequests.filter((r) => r.id !== requestId),
+                  accessRequestCount: Math.max(0, cur.accessRequestCount - 1),
+                }
+              : cur
+          )
+        }
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

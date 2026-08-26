@@ -434,6 +434,20 @@ export function assignTeacher(lessonId: string, teacherId: string) {
   });
 }
 
+// Sets, in one request, exactly which of a school's teachers have this lesson.
+// Other schools' assignments are untouched. Prefer this over looping the
+// single-teacher calls: it either applies in full or not at all.
+export function putLessonAssignments(
+  lessonId: string,
+  schoolId: string,
+  teacherIds: string[]
+) {
+  return apiFetch<Lesson>(`/api/lessons/${lessonId}/assignments`, {
+    method: "PUT",
+    body: JSON.stringify({ schoolId, teacherIds }),
+  });
+}
+
 export function unassignTeacher(lessonId: string, teacherId: string) {
   return apiFetch<Lesson>(`/api/lessons/${lessonId}/assign/${teacherId}`, {
     method: "DELETE",
@@ -665,6 +679,15 @@ export async function listSecurityLogs() {
   return logs.map(toSecurityLog);
 }
 
+export type StalledTeacher = {
+  teacherId: string;
+  name: string;
+  email: string;
+  schoolId?: string | null;
+  lastActivityAt?: string | null;
+  completedCount: number;
+};
+
 export type SuperAdminOverview = {
   schoolCount: number;
   teacherCount: number;
@@ -672,6 +695,15 @@ export type SuperAdminOverview = {
   pendingCount: number;
   pendingApprovals: User[];
   securityAlerts: SecurityLog[];
+  // What is waiting on the platform owner. Each list is capped; the count is
+  // the true total.
+  accessRequests: AccessRequest[];
+  accessRequestCount: number;
+  stalledTeachers: StalledTeacher[];
+  stalledTeacherCount: number;
+  unsortedUploads: UploadedFile[];
+  unsortedUploadCount: number;
+  stalledAfterDays: number;
 };
 
 export async function getSuperAdminOverview(): Promise<SuperAdminOverview> {
@@ -681,6 +713,31 @@ export async function getSuperAdminOverview(): Promise<SuperAdminOverview> {
     }
   >("/api/dashboard/super-admin");
   return { ...data, securityAlerts: data.securityAlerts.map(toSecurityLog) };
+}
+
+// What a set of filenames would do if uploaded. Nothing is stored — this is
+// the same parser and matching rules the real upload uses, asked in advance.
+export type UploadPreviewRow = {
+  filename: string;
+  ok: boolean;
+  note?: string | null;
+  lessonTitle?: string | null;
+  grade?: number | null;
+  course?: string | null;
+  lessonNo?: number | null;
+  existingLesson: boolean;
+  teacherNames: string[];
+};
+
+export function previewUploads(
+  filenames: string[],
+  language: "en" | "fr",
+  year: 1 | 2
+) {
+  return apiFetch<UploadPreviewRow[]>("/api/files/preview", {
+    method: "POST",
+    body: JSON.stringify({ filenames, language, year }),
+  });
 }
 
 export function listUploadedFiles() {
