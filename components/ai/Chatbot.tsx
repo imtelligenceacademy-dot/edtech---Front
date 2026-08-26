@@ -3,39 +3,17 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowUp,
-  Plus,
   CheckCircle2,
-  Bot,
-  User as UserIcon,
-  ChevronLeft,
-  ChevronRight,
-  X,
   Presentation,
-  LogOut,
-  ChevronDown,
-  GraduationCap,
-  Loader2,
   Lock,
   Clock,
   Maximize2,
-  Minimize2,
-  BellRing,
-  TrendingUp,
   ArrowDown,
-  Copy,
-  Check,
   RotateCcw,
-  Square,
-  PanelRightClose,
-  PanelRightOpen,
-  Sparkles,
   Monitor,
-  MonitorX,
-  BookmarkCheck,
   Trash2,
 } from "lucide-react";
-import { cn, initials, stripMarkdown } from "@/lib/utils";
+import { cn, stripMarkdown } from "@/lib/utils";
 import {
   getSession,
   logout,
@@ -55,7 +33,8 @@ import {
   FairProjectsScreen,
 } from "@/components/teacher/FairProjects";
 import { MessageBubble, TypingIndicator } from "@/components/teacher/Transcript";
-import { UserMenu } from "@/components/teacher/UserMenu";
+import { ChatHeader } from "@/components/teacher/ChatHeader";
+import { ChatComposer } from "@/components/teacher/ChatComposer";
 import { PresentingBar } from "@/components/teacher/PresentingBar";
 import { FullscreenPdf, LessonPane } from "@/components/teacher/LessonPane";
 import { useTranscriptScroll } from "@/components/teacher/hooks/useTranscriptScroll";
@@ -600,65 +579,17 @@ export function Chatbot({
           openedLesson && chatCollapsed ? "hidden" : "flex"
         )}
       >
-        {/* Header — relative z-30 lifts it (and its dropdown menus) above the
-            chat messages below, which otherwise paint over the dropdowns. */}
-        <div
-          className={cn(
-            "relative z-30 flex items-center gap-2 border-b px-3 py-4 backdrop-blur-xl sm:gap-3 sm:px-6",
-            light ? "border-slate-200/60 bg-white/70" : "border-white/5 bg-slate-950/40"
-          )}
-        >
-          <div className="relative shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 p-[2px] shadow-lg shadow-brand/30">
-            <img
-              src="/logo.png"
-              alt="IM-Telligence"
-              className="h-9 w-9 rounded-full bg-white object-contain p-0.5"
-            />
-            <div
-              className={cn(
-                "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 bg-emerald-400",
-                light ? "border-white" : "border-slate-900"
-              )}
-            />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p
-              className={cn(
-                "truncate text-sm font-semibold tracking-tight",
-                light ? "text-slate-900" : "text-white"
-              )}
-            >
-              IM-Telligence AI
-            </p>
-            <p
-              className={cn(
-                "hidden items-center gap-1.5 truncate text-[11px] sm:flex",
-                light ? "text-slate-500" : "text-slate-400"
-              )}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Online · Lesson copilot
-            </p>
-          </div>
-          {(selectedGrade !== null || messages.length > 0 || showFairProjects) && (
-            <button
-              onClick={resetSession}
-              title="Start a new session"
-              className={cn(
-                "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
-                light
-                  ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
-                  : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
-              )}
-            >
-              <Plus size={13} /> <span className="hidden sm:inline">New chat</span>
-            </button>
-          )}
-          {session?.ictFairAccess && (
-            <FairButton active={showFairProjects} onClick={openFairProjects} light={light} />
-          )}
-          <UserMenu session={session} light={light} />
-        </div>
+        <ChatHeader
+          session={session}
+          canStartNewChat={
+            selectedGrade !== null || messages.length > 0 || showFairProjects
+          }
+          onNewChat={resetSession}
+          showFairProjects={showFairProjects}
+          onOpenFair={openFairProjects}
+          light={light}
+        />
+
 
         {/* Required first step: pick a grade, then the chat / welcome */}
         <div
@@ -756,101 +687,18 @@ export function Chatbot({
           </div>
         )}
 
-        {/* Composer — hidden on the grade gate (the assistant isn't usable
-            until a grade is picked) and in ICT Fair mode (view-only, no chat) */}
+        {/* Hidden on the grade gate (the assistant isn't usable until a grade
+            is picked) and in ICT Fair mode (view-only, no chat) */}
         {!showFairProjects && selectedGrade !== null && (
-        <div
-          className={cn(
-            "border-t px-4 py-4 backdrop-blur-xl sm:px-8",
-            light
-              ? "border-slate-200/60 bg-white/40"
-              : "border-white/5 bg-slate-950/40"
-          )}
-        >
-          <div className="mx-auto max-w-3xl">
-            <div
-              className={cn(
-                "group relative flex items-end gap-2 rounded-2xl border p-2 shadow-lg transition focus-within:border-brand/60",
-                light
-                  ? "border-slate-200 bg-white shadow-slate-900/5 focus-within:shadow-brand/20"
-                  : "border-white/10 bg-white/5 shadow-black/30 focus-within:shadow-brand/20"
-              )}
-            >
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-                rows={1}
-                placeholder="Message IM-Telligence AI…"
-                className={cn(
-                  "max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm focus:outline-none disabled:cursor-not-allowed",
-                  light
-                    ? "text-slate-900 placeholder:text-slate-400"
-                    : "text-white placeholder:text-slate-500"
-                )}
-              />
-              {thinking || streaming ? (
-                <button
-                  onClick={stopStreaming}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-700"
-                  aria-label="Stop the reply"
-                  title="Stop"
-                >
-                  <Square size={13} fill="currentColor" />
-                </button>
-              ) : (
-                <button
-                  onClick={() => send()}
-                  disabled={!input.trim()}
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition",
-                    input.trim()
-                      ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/40 hover:brightness-110"
-                      : light
-                      ? "bg-slate-100 text-slate-400"
-                      : "bg-white/5 text-slate-500"
-                  )}
-                  aria-label="Send"
-                >
-                  <ArrowUp size={16} />
-                </button>
-              )}
-            </div>
-            <p
-              className={cn(
-                "mt-2 text-center text-[11px]",
-                light ? "text-slate-500" : "text-slate-500"
-              )}
-            >
-              Press{" "}
-              <kbd
-                className={cn(
-                  "rounded px-1 py-0.5",
-                  light ? "bg-slate-200/60" : "bg-white/5"
-                )}
-              >
-                Enter
-              </kbd>{" "}
-              to send ·{" "}
-              <kbd
-                className={cn(
-                  "rounded px-1 py-0.5",
-                  light ? "bg-slate-200/60" : "bg-white/5"
-                )}
-              >
-                Shift+Enter
-              </kbd>{" "}
-              for newline · saved to this lesson so you can come back to it,
-              visible only to you and the platform owner
-            </p>
-          </div>
-        </div>
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            onSend={() => send()}
+            onStop={stopStreaming}
+            busy={thinking || streaming}
+            inputRef={inputRef}
+            light={light}
+          />
         )}
       </div>
 
