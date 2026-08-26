@@ -60,6 +60,8 @@ import { MessageBubble, TypingIndicator } from "@/components/teacher/Transcript"
 import { UserMenu } from "@/components/teacher/UserMenu";
 import { PresentingBar } from "@/components/teacher/PresentingBar";
 import { FullscreenPdf, LessonPane } from "@/components/teacher/LessonPane";
+import { useTranscriptScroll } from "@/components/teacher/hooks/useTranscriptScroll";
+import { useLessonSplit } from "@/components/teacher/hooks/useLessonSplit";
 import {
   gradePath,
   TEACHER_FAIR,
@@ -71,7 +73,6 @@ import {
   CHAT_STATE_KEY,
   clearChatSession,
   lastTaughtGrade,
-  PANE_WIDTH_KEY,
   rememberGrade,
   type SavedChat,
 } from "@/lib/teacher/prefs";
@@ -140,9 +141,6 @@ export function Chatbot({
   const [progressByLesson, setProgressByLesson] = useState<Record<string, ProgressEntry>>({});
   // The teacher is reading back through the transcript — don't yank them to the
   // bottom while a reply streams in.
-  const [atBottom, setAtBottom] = useState(true);
-  const atBottomRef = useRef(true);
-  const suppressScrollUntilRef = useRef(0);
   // A reply is in flight and can be stopped; the last question is kept so a
   // failed turn can be retried without retyping it.
   const [streaming, setStreaming] = useState(false);
@@ -150,8 +148,6 @@ export function Chatbot({
   const abortRef = useRef<AbortController | null>(null);
   // Lesson viewer / chat split (desktop): draggable, and the chat can be folded
   // away entirely for full-width presenting.
-  const [paneWidth, setPaneWidth] = useState(60);
-  const [chatCollapsed, setChatCollapsed] = useState(false);
   // Presenting: the lesson page is on the classroom's second screen and this
   // window keeps the assistant. `page` is what the class is looking at.
   const [presenting, setPresenting] = useState<{
@@ -173,8 +169,15 @@ export function Chatbot({
   const pendingLessonIdRef = useRef<string | null>(null);
   // Threads already pulled from the server this session.
   const loadedThreadsRef = useRef<Set<string>>(new Set());
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Follows the newest message unless the teacher has scrolled up to read.
+  const { scrollRef, atBottom, onTranscriptScroll, jumpToLatest, followLatest } =
+    useTranscriptScroll([messages, thinking]);
+
+  // How the lesson viewer and the assistant share the screen.
+  const { paneWidth, setPaneWidth, chatCollapsed, setChatCollapsed, startPaneDrag } =
+    useLessonSplit();
 
   const gradeLessons =
     selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
@@ -209,8 +212,6 @@ export function Chatbot({
         const saved = JSON.parse(raw) as Partial<SavedChat>;
         pendingLessonIdRef.current = saved.lastLessonId ?? null;
       }
-      const width = Number(window.localStorage.getItem(PANE_WIDTH_KEY));
-      if (width >= 35 && width <= 80) setPaneWidth(width);
     } catch {
       /* unreadable storage — start fresh */
     }
@@ -289,15 +290,6 @@ export function Chatbot({
   }, [lessons]);
 
   useEffect(() => {
-    if (!restored) return;
-    try {
-      window.localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(paneWidth)));
-    } catch {
-      /* preference just won't stick */
-    }
-  }, [restored, paneWidth]);
-
-  useEffect(() => {
     getSession().then(setSession).catch(() => setSession(null));
     // Load the teacher's real assigned lessons (with their linked PDFs).
     listLessons()
@@ -321,37 +313,6 @@ export function Chatbot({
     if (!session?.ictFairAccess) return;
     listFairProjects().then(setFairProjects).catch(() => setFairProjects([]));
   }, [session?.ictFairAccess]);
-
-  useEffect(() => {
-    if (!atBottomRef.current) return;
-    scrollTranscriptToBottom();
-  }, [messages, thinking]);
-
-  // A smooth scroll fires scroll events all the way down, and every one of them
-  // looks like "the teacher scrolled up" until the animation lands. Ignore the
-  // transcript's own scrolling for the length of the animation.
-  function scrollTranscriptToBottom() {
-    const el = scrollRef.current;
-    if (!el) return;
-    suppressScrollUntilRef.current = Date.now() + 800;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }
-
-  // Track how close to the bottom the transcript is scrolled. Anything within a
-  // bubble's height counts as "following along".
-  function onTranscriptScroll(e: React.UIEvent<HTMLDivElement>) {
-    if (Date.now() < suppressScrollUntilRef.current) return;
-    const el = e.currentTarget;
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    atBottomRef.current = near;
-    setAtBottom((prev) => (prev === near ? prev : near));
-  }
-
-  function jumpToLatest() {
-    atBottomRef.current = true;
-    setAtBottom(true);
-    scrollTranscriptToBottom();
-  }
 
   useEffect(() => {
     if (inputRef.current) {
@@ -654,8 +615,7 @@ export function Chatbot({
     setInput("");
     setFailedPrompt(null);
     // Sending is an intent to follow the answer.
-    atBottomRef.current = true;
-    setAtBottom(true);
+    followLatest();
 
     // Lesson actions are handled by the app itself (not the LLM):
     if (COMPLETE_INTENT.test(text)) {
@@ -892,27 +852,6 @@ export function Chatbot({
       presentChannelRef.current?.close();
     };
   }, []);
-
-  // Drag the divider between the lesson viewer and the chat.
-  function startPaneDrag(e: React.MouseEvent) {
-    e.preventDefault();
-    const previousCursor = document.body.style.cursor;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    function onMove(ev: MouseEvent) {
-      const pct = (ev.clientX / window.innerWidth) * 100;
-      setPaneWidth(Math.min(80, Math.max(35, pct)));
-    }
-    function onUp() {
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
 
   // Return to the clean starting screen (grade picker) with an empty session.
   function resetSession() {
