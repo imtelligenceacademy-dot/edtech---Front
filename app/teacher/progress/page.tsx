@@ -15,22 +15,21 @@ import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { listLessons, listProgress } from "@/lib/api";
 import { gradePath, TEACHER_HOME } from "@/lib/teacher-routes";
+import { courseLabel } from "@/lib/teacher/lesson-order";
 import { cn, formatDate } from "@/lib/utils";
 import type { Lesson, ProgressEntry } from "@/types";
 
 // "Python · " prefix for a lesson line inside a grade folder. Older lessons
 // carry no course, and then the title stands on its own.
-function courseLabel(lesson?: Lesson): string {
-  if (lesson?.course === "python") return "Python · ";
-  if (lesson?.course === "microbit") return "micro:bit · ";
-  return "";
+function coursePrefix(lesson?: Lesson): string {
+  const label = lesson?.course ? courseLabel(lesson.course) : null;
+  return label && label !== "Lessons" ? `${label} · ` : "";
 }
 
 // "Grade 7 · Python · " prefix, for lines that stand outside a grade folder.
 function lessonMeta(lesson?: Lesson): string {
   if (!lesson) return "";
-  const course = courseLabel(lesson);
-  return `Grade ${lesson.grade} · ${course}`;
+  return `Grade ${lesson.grade} · ${coursePrefix(lesson)}`;
 }
 
 function isCompleted(p: ProgressEntry): boolean {
@@ -96,7 +95,7 @@ function GradeFolder({
                   {lesson?.title ?? "Lesson"}
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  {courseLabel(lesson)}
+                  {coursePrefix(lesson)}
                   Completed {formatDate(entry.lastOpenedAt)}
                 </span>
               </span>

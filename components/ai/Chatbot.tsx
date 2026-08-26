@@ -57,209 +57,34 @@ import {
 } from "@/lib/teacher-routes";
 import { openPresentChannel, type PresentChannel } from "@/lib/present-channel";
 import { openPresenterWindow, placeOnExternalScreen } from "@/lib/window-placement";
+import {
+  CHAT_STATE_KEY,
+  clearChatSession,
+  lastTaughtGrade,
+  PANE_WIDTH_KEY,
+  rememberGrade,
+  type SavedChat,
+} from "@/lib/teacher/prefs";
+import {
+  byLessonNo,
+  courseLabel,
+  descriptivePart,
+  groupLessonsByCourse,
+  isMobileViewport,
+} from "@/lib/teacher/lesson-order";
+import {
+  formatUnlockDate,
+  lessonLockMessage,
+  STARTER_PROMPTS,
+} from "@/lib/teacher/lesson-copy";
+import {
+  COMPLETE_INTENT,
+  findLessonByText,
+  hasNamedLessonOpenIntent,
+  NEXT_LESSON_INTENT,
+  OPEN_LESSON_INTENT,
+} from "@/lib/teacher/lesson-intents";
 import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/types";
-
-// The lesson in play is remembered per tab so a refresh mid-class doesn't lose
-// it. The conversation itself lives on the server, one thread per lesson.
-const CHAT_STATE_KEY = "imt_teacher_chat_v1";
-// Width of the lesson viewer as a % of the window — a per-teacher preference,
-// so it outlives the tab.
-const PANE_WIDTH_KEY = "imt_lesson_pane_width";
-// The grade a teacher last taught. They come back to the same one for weeks,
-// so the gate points at it instead of asking them to remember.
-const LAST_GRADE_KEY = "imt_last_grade";
-
-type SavedChat = {
-  lastLessonId: string | null;
-};
-
-function rememberGrade(grade: number) {
-  try {
-    window.localStorage.setItem(LAST_GRADE_KEY, String(grade));
-  } catch {
-    /* storage disabled — the gate just won't highlight anything */
-  }
-}
-
-function lastTaughtGrade(): number | null {
-  try {
-    const value = Number(window.localStorage.getItem(LAST_GRADE_KEY));
-    return Number.isInteger(value) && value > 0 ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearChatSession() {
-  try {
-    window.sessionStorage.removeItem(CHAT_STATE_KEY);
-  } catch {
-    /* private mode / storage disabled — nothing to clear */
-  }
-}
-
-// One-tap openers for teachers who don't know what to ask the assistant yet.
-const STARTER_PROMPTS = [
-  "How should I introduce this lesson?",
-  "What do students usually get wrong here?",
-  "Give me a 5-minute starter activity",
-];
-
-
-// Maps "first/second/…", "one/two/…", "1st/2nd/…" to a lesson number.
-const WORD_NUMBERS: Record<string, number> = {
-  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6,
-  seventh: 7, eighth: 8, ninth: 9, tenth: 10,
-  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
-  seven: 7, eight: 8, nine: 9, ten: 10,
-};
-
-// Strip the "Grade N Lesson NN" prefix to get the descriptive part, e.g.
-// "Grade 7 Lesson 03 Buzzer" -> "buzzer".
-function descriptivePart(title: string): string {
-  return title
-    .replace(/^grade\s*\d+\s*(?:python|micro:?bit)?\s*lesson\s*\d+\s*/i, "")
-    .trim()
-    .toLowerCase();
-}
-
-// Resolve an "open lesson" request against the teacher's real assigned lessons.
-// Handles the full title, a descriptive keyword ("buzzer", "light sensor"),
-// "grade N lesson M", a bare "lesson N", and ordinals ("the first lesson").
-function findLessonByText(input: string, lessons: Lesson[]): Lesson | null {
-  const lower = input.toLowerCase();
-
-  // 1. Direct title match (longest title first to prefer the most specific).
-  const byTitle = [...lessons]
-    .sort((a, b) => b.title.length - a.title.length)
-    .find((l) => lower.includes(l.title.toLowerCase()));
-  if (byTitle) return byTitle;
-
-  // 2. Descriptive keyword from the title ("open the buzzer lesson").
-  const byKeyword = [...lessons]
-    .sort((a, b) => descriptivePart(b.title).length - descriptivePart(a.title).length)
-    .find((l) => {
-      const d = descriptivePart(l.title);
-      return d.length >= 3 && lower.includes(d);
-    });
-  if (byKeyword) return byKeyword;
-
-  // 3. Resolve a lesson number from digits, ordinals, or number words.
-  // Number-words only count when the message actually mentions "lesson", so
-  // casual "one"/"two" in a question doesn't accidentally open a lesson.
-  const gradeMatch = lower.match(/grade\s*(\d{1,2})/);
-  let lessonNo: number | null = null;
-  const numMatch = lower.match(/lesson\s*0*(\d{1,3})/);
-  if (numMatch) {
-    lessonNo = Number(numMatch[1]);
-  } else if (lower.includes("lesson")) {
-    const words = lower.split(/[^a-z0-9]+/);
-    for (const [word, n] of Object.entries(WORD_NUMBERS)) {
-      if (words.includes(word)) {
-        lessonNo = n;
-        break;
-      }
-    }
-  }
-
-  if (lessonNo !== null) {
-    let candidates = lessons.filter((l) => l.lessonNo === lessonNo);
-    if (gradeMatch) {
-      candidates = candidates.filter((l) => l.grade === Number(gradeMatch[1]));
-    }
-    // Unambiguous match wins; if several grades share the number, don't guess.
-    if (candidates.length === 1) return candidates[0];
-  }
-
-  return null;
-}
-
-// Friendly date for "available on …" countdowns.
-function formatUnlockDate(iso?: string | null): string {
-  if (!iso) return "soon";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "soon";
-  const days = Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86_400_000));
-  const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  if (days <= 0) return "today";
-  return `${dateStr} (in ${days} day${days === 1 ? "" : "s"})`;
-}
-
-// The message shown when a teacher tries to open a lesson that isn't available.
-function lessonLockMessage(lesson: Lesson): string {
-  switch (lesson.accessStatus) {
-    case "completed":
-      return `You've already completed "${lesson.title}". It's now locked — please ask your admin for access if you need to reopen it.`;
-    case "waiting":
-      return `"${lesson.title}" will unlock ${formatUnlockDate(lesson.availableAt)} after your waiting period. To open it sooner, please ask your admin for access.`;
-    default:
-      return `"${lesson.title}" is locked. Finish your current lesson first — or ask your admin for access.`;
-  }
-}
-
-// Lesson-action intents the assistant handles itself (never sent to the LLM).
-// "I finished/completed the lesson/pdf" / "mark the pdf as complete" -> mark done.
-const COMPLETE_INTENT =
-  /\b(i(?:'ve| have)?\s*(?:just\s*)?(?:finished|done|completed)|(?:finished|completed|done with)\s+(?:the|this|my)\s+(?:lesson|pdf|presentation|deck)|mark(?:\s+(?:it|this|the\s+(?:lesson|pdf|presentation)))?\s+(?:as\s+)?complete|mark complete)\b/i;
-// "open/start the next lesson" -> advance to the next lesson in the track.
-const NEXT_LESSON_INTENT =
-  /\b(?:(?:open|start|go to|load|continue)\s+)?(?:the\s+)?next\s+(?:lesson|one)\b/i;
-// "open my lesson" / "reopen this lesson" -> open the current/available lesson.
-const OPEN_LESSON_INTENT = /\breopen\b|\b(?:open|start|resume|continue|load|go to)\b[^.?!]*\blesson\b/i;
-
-function hasNamedLessonOpenIntent(text: string): boolean {
-  return (
-    /\b(?:open|load|go to)\b/i.test(text) ||
-    /\b(?:start|resume|continue)\b(?!\s+by\b)[^.?!]*(?:\blesson\b|\bgrade\s*\d{1,2}\b)/i.test(text)
-  );
-}
-
-// Relative order of courses within a grade/language track — mirrors the
-// backend COURSE_ORDER so the whole track reads as one linear sequence
-// (all python lessons, then all micro:bit lessons).
-const COURSE_ORDER: Record<string, number> = { python: 1, microbit: 2 };
-function courseOrder(l: Lesson): number {
-  return COURSE_ORDER[l.course ?? ""] ?? 0;
-}
-
-// Order lessons by course first, then curriculum number, for sequential nav.
-function byLessonNo(a: Lesson, b: Lesson): number {
-  return (
-    courseOrder(a) - courseOrder(b) ||
-    (a.lessonNo ?? 0) - (b.lessonNo ?? 0) ||
-    a.title.localeCompare(b.title)
-  );
-}
-
-// Human label for a course code (for section headers in the lesson list).
-function courseLabel(course?: string | null): string {
-  if (course === "python") return "Python";
-  if (course === "microbit") return "micro:bit";
-  return "Lessons";
-}
-
-// Group lessons into course sections in curriculum order (python, then
-// micro:bit, then anything else), each section sorted by lesson number.
-function groupLessonsByCourse(
-  lessons: Lesson[]
-): { course: string | null | undefined; items: Lesson[] }[] {
-  const groups = new Map<string, Lesson[]>();
-  for (const l of lessons) {
-    const key = l.course ?? "";
-    (groups.get(key) ?? groups.set(key, []).get(key)!).push(l);
-  }
-  return Array.from(groups.entries())
-    .sort((a, b) => (COURSE_ORDER[a[0]] ?? 0) - (COURSE_ORDER[b[0]] ?? 0))
-    .map(([course, items]) => ({
-      course: course || null,
-      items: items.sort(byLessonNo),
-    }));
-}
-
-function isMobileViewport(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
-}
 
 // The route decides which grade is in play (and whether this is the ICT Fair
 // view); the component never picks one on its own, so Back and Forward move
