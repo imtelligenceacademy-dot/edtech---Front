@@ -733,6 +733,10 @@ export function Chatbot({
       : `${lesson.slides.length} slides. The deck is open on the left; ask me anything about a slide and I'll explain it here.`;
     pushAssistant(`Opening "${lesson.title}" — Grade ${lesson.grade}. ${detail}`, {
       sourceRef: lesson.title,
+      // Tagged with the lesson being opened. The ref still holds the previous
+      // one until React re-renders, and a message filed under the old thread
+      // would vanish the moment the new one takes over.
+      lessonId: lesson.id,
     });
   }
 
@@ -978,7 +982,7 @@ export function Chatbot({
       reusing
         ? `The classroom screen is now showing "${lesson.title}", from page 1.`
         : `"${lesson.title}" is on your second screen. Use the bar below to change the page — the class only ever sees the lesson, never this chat.`,
-      { sourceRef: lesson.title }
+      { sourceRef: lesson.title, lessonId: lesson.id }
     );
   }
 
