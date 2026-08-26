@@ -46,7 +46,6 @@ import {
   listProgress,
   requestLessonAccess,
   saveLessonProgress,
-  streamTeacherAI,
 } from "@/lib/api";
 import { GradeGate } from "@/components/teacher/GradeGate";
 import { WelcomeScreen } from "@/components/teacher/WelcomeScreen";
@@ -63,6 +62,7 @@ import { useTranscriptScroll } from "@/components/teacher/hooks/useTranscriptScr
 import { useLessonSplit } from "@/components/teacher/hooks/useLessonSplit";
 import { useTeacherLessons } from "@/components/teacher/hooks/useTeacherLessons";
 import { useChatThread } from "@/components/teacher/hooks/useChatThread";
+import { useAiAnswer } from "@/components/teacher/hooks/useAiAnswer";
 import {
   gradePath,
   TEACHER_FAIR,
@@ -110,7 +110,6 @@ export function Chatbot({
 } = {}) {
   const router = useRouter();
   const [input, setInput] = useState("");
-  const [thinking, setThinking] = useState(false);
   const [openedLesson, setOpenedLesson] = useState<Lesson | null>(null);
   const [openedSlide, setOpenedSlide] = useState(1);
   // The PDF page currently visible in the viewer. Sent with each question so the
@@ -131,11 +130,6 @@ export function Chatbot({
   const showFairProjects = fair;
   // The teacher is reading back through the transcript — don't yank them to the
   // bottom while a reply streams in.
-  // A reply is in flight and can be stopped; the last question is kept so a
-  // failed turn can be retried without retyping it.
-  const [streaming, setStreaming] = useState(false);
-  const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   // Lesson viewer / chat split (desktop): draggable, and the chat can be folded
   // away entirely for full-width presenting.
   // Presenting: the lesson page is on the classroom's second screen and this
@@ -201,6 +195,21 @@ export function Chatbot({
     clearThread,
   } = useChatThread(contextLessonId);
 
+  // A question in flight: streaming, stopping, retrying.
+  const {
+    thinking,
+    setThinking,
+    streaming,
+    failedPrompt,
+    setFailedPrompt,
+    ask,
+    stop: stopStreaming,
+    retryLast,
+  } = useAiAnswer({ visibleMessages, setMessages, pushAssistant });
+
+  // What a question is asked about: the lesson in play and the page on screen.
+  const askContext = { lessonId: contextLessonId, currentSlide: viewedSlide };
+
   // Follows the newest message unless the teacher has scrolled up to read.
   const { scrollRef, atBottom, onTranscriptScroll, jumpToLatest, followLatest } =
     useTranscriptScroll([messages, thinking]);
@@ -264,118 +273,6 @@ export function Chatbot({
         Math.min(inputRef.current.scrollHeight, 180) + "px";
     }
   }, [input]);
-
-  // `retry` re-asks a question that's already in the transcript, so the failed
-  // turn (and its error reply) must be trimmed off the history first.
-  async function answerQuestion(text: string, retry = false) {
-    let prior = visibleMessages;
-    if (retry) {
-      prior = [...visibleMessages];
-      while (prior.length && prior[prior.length - 1].role === "assistant") prior.pop();
-      if (prior.length && prior[prior.length - 1].role === "user") prior.pop();
-    }
-    // Prior turns become the conversation history; the backend appends `text`.
-    const history = prior
-      .slice(-8)
-      .map((m) => ({ role: m.role, content: m.content }));
-    const assistantId = `a_${Date.now()}`;
-    const threadId = contextLessonId;
-    let started = false;
-    let sourceRef: string | undefined;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStreaming(true);
-
-    try {
-      await streamTeacherAI(
-        {
-          message: text,
-          lessonId: contextLessonId,
-          currentSlide: viewedSlide,
-          history,
-        },
-        {
-          signal: controller.signal,
-          onMeta: (m) => {
-            sourceRef = m.sourceRef;
-          },
-          onDelta: (delta) => {
-            if (!started) {
-              started = true;
-              setThinking(false);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: assistantId,
-                  role: "assistant",
-                  content: delta,
-                  timestamp: new Date().toISOString(),
-                  lessonId: threadId,
-                },
-              ]);
-            } else {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, content: m.content + delta } : m
-                )
-              );
-            }
-          },
-        }
-      );
-      // Attach the lesson reference once the stream completes.
-      if (started && sourceRef) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, sourceRef } : m))
-        );
-      }
-      if (!started) {
-        pushAssistant("I didn't get a response. Please try again.");
-        setFailedPrompt(text);
-      }
-    } catch (err) {
-      // Stopped on purpose — keep whatever streamed in and say nothing.
-      if (controller.signal.aborted) return;
-      // The backend sends a specific, already-safe reason (usage limit reached,
-      // provider unavailable, timed out...). Prefer it over a generic line so the
-      // teacher knows whether to retry now, wait, or ask an administrator.
-      const reason = err instanceof Error ? err.message.trim() : "";
-      const isNetwork =
-        !reason || /failed to fetch|networkerror|load failed/i.test(reason);
-      pushAssistant(
-        isNetwork
-          ? "I couldn't reach the assistant. Please check your connection and try again."
-          : reason
-      );
-      setFailedPrompt(text);
-    } finally {
-      setThinking(false);
-      setStreaming(false);
-      if (abortRef.current === controller) abortRef.current = null;
-    }
-  }
-
-  // Abandon the reply in flight. Whatever already streamed in stays on screen.
-  function stopStreaming() {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setThinking(false);
-    setStreaming(false);
-  }
-
-  // Re-ask the last question that failed, dropping the error reply.
-  function retryLast() {
-    const text = failedPrompt;
-    if (!text) return;
-    setFailedPrompt(null);
-    setMessages((prev) => {
-      const next = [...prev];
-      if (next.length && next[next.length - 1].role === "assistant") next.pop();
-      return next;
-    });
-    setThinking(true);
-    void answerQuestion(text, true);
-  }
 
   function openLesson(lesson: Lesson) {
     // Sequential unlocking — a teacher can only open their current lesson.
@@ -517,8 +414,7 @@ export function Chatbot({
     }
 
     // Otherwise it's a question for the grounded AI assistant.
-    setThinking(true);
-    void answerQuestion(text);
+    void ask(text, askContext);
   }
 
   const isEmpty = visibleMessages.length === 0;
@@ -951,7 +847,7 @@ export function Chatbot({
               {failedPrompt && !thinking && !streaming && (
                 <div className="flex justify-center">
                   <button
-                    onClick={retryLast}
+                    onClick={() => retryLast(askContext)}
                     className={cn(
                       "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition",
                       light
