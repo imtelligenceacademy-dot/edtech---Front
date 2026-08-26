@@ -63,13 +63,12 @@ import { useLessonSplit } from "@/components/teacher/hooks/useLessonSplit";
 import { useTeacherLessons } from "@/components/teacher/hooks/useTeacherLessons";
 import { useChatThread } from "@/components/teacher/hooks/useChatThread";
 import { useAiAnswer } from "@/components/teacher/hooks/useAiAnswer";
+import { usePresenter } from "@/components/teacher/hooks/usePresenter";
 import {
   gradePath,
   TEACHER_FAIR,
   TEACHER_HOME,
 } from "@/lib/teacher-routes";
-import { openPresentChannel, type PresentChannel } from "@/lib/present-channel";
-import { openPresenterWindow, placeOnExternalScreen } from "@/lib/window-placement";
 import {
   CHAT_STATE_KEY,
   clearChatSession,
@@ -132,19 +131,6 @@ export function Chatbot({
   // bottom while a reply streams in.
   // Lesson viewer / chat split (desktop): draggable, and the chat can be folded
   // away entirely for full-width presenting.
-  // Presenting: the lesson page is on the classroom's second screen and this
-  // window keeps the assistant. `page` is what the class is looking at.
-  const [presenting, setPresenting] = useState<{
-    lesson: Lesson;
-    page: number;
-    total: number;
-  } | null>(null);
-  const [presentBlocked, setPresentBlocked] = useState(false);
-  const presentingRef = useRef<typeof presenting>(null);
-  presentingRef.current = presenting;
-  const presentWinRef = useRef<Window | null>(null);
-  const presentChannelRef = useRef<PresentChannel | null>(null);
-  const byeTimerRef = useRef<number | null>(null);
   // Gate the "save" effect until the previous session has been restored, so an
   // empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
@@ -165,6 +151,32 @@ export function Chatbot({
   // How the lesson viewer and the assistant share the screen.
   const { paneWidth, setPaneWidth, chatCollapsed, setChatCollapsed, startPaneDrag } =
     useLessonSplit();
+
+  // The lesson on the classroom's second screen, if there is one. It runs
+  // before the conversation because presenting decides which lesson is in play,
+  // and that in turn decides which thread is on screen — so it speaks into the
+  // chat through a ref that is filled in just below.
+  const sayRef = useRef<(content: string, extras: Partial<AIMessage>) => void>(
+    () => {}
+  );
+  const {
+    presenting,
+    presentingRef,
+    presentBlocked,
+    startPresenting,
+    stopPresenting,
+    goToPage,
+  } = usePresenter({
+    onPageChange: setViewedSlide,
+    say: (content, extras) => sayRef.current(content, extras),
+    onStart: (lesson) => {
+      // The PDF lives on the projector now; this window is the assistant.
+      setOpenedLesson(null);
+      setLastLesson(lesson);
+      setChatCollapsed(false);
+    },
+    onStop: refreshLessons,
+  });
 
   const gradeLessons =
     selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
@@ -194,6 +206,7 @@ export function Chatbot({
     pushUser,
     clearThread,
   } = useChatThread(contextLessonId);
+  sayRef.current = pushAssistant;
 
   // A question in flight: streaming, stopping, retrying.
   const {
@@ -465,166 +478,6 @@ export function Chatbot({
     }
     setOpenedLesson(fresh);
   }
-
-  // --- Presenting on the classroom screen -------------------------------- #
-
-  // Put a lesson on the second display. A window already on the projector is
-  // reused — switching lessons should move the class along, not leave them on
-  // the old one while a second window opens somewhere. A new window has to be
-  // opened inside this click or the browser blocks it, so placement follows.
-  function startPresenting(lesson: Lesson) {
-    if (!lesson.fileId) return;
-    const url = `/teacher/present/${lesson.id}`;
-    const existing = presentWinRef.current;
-    const reusing = Boolean(existing && !existing.closed);
-
-    // Drop the old lesson's channel before navigating: its document says
-    // goodbye on unload, and nobody should be listening for that any more.
-    if (byeTimerRef.current !== null) {
-      window.clearTimeout(byeTimerRef.current);
-      byeTimerRef.current = null;
-    }
-    presentChannelRef.current?.close();
-    presentChannelRef.current = null;
-
-    let win: Window | null = existing;
-    if (reusing) {
-      try {
-        win!.location.href = url;
-        win!.focus();
-      } catch {
-        win = null; // window is gone or not ours any more
-      }
-    }
-    if (!win || win.closed) {
-      const opened = openPresenterWindow(url);
-      if (!opened.win) {
-        setPresentBlocked(true);
-        return;
-      }
-      win = opened.win;
-      void placeOnExternalScreen(win);
-    }
-    setPresentBlocked(false);
-    presentWinRef.current = win;
-
-    const channel = openPresentChannel(lesson.id, (message) => {
-      // A "bye" is treated as tentative: reloading the projected window sends
-      // one before the new document announces itself, and that shouldn't look
-      // like the teacher shut the projector down.
-      if (message.type === "hello" || message.type === "ready") {
-        if (byeTimerRef.current !== null) {
-          window.clearTimeout(byeTimerRef.current);
-          byeTimerRef.current = null;
-        }
-      }
-      if (message.type === "hello") {
-        channel.post({ type: "page", page: presentingRef.current?.page ?? 1 });
-      }
-      if (message.type === "ready") {
-        setPresenting((prev) => (prev ? { ...prev, total: message.total } : prev));
-      }
-      // The teacher scrolled the projected window itself: follow it here, so
-      // the counter, the progress they save and the slide the assistant
-      // answers about are all the page the class is actually looking at.
-      if (message.type === "page") {
-        setPresenting((prev) => (prev ? { ...prev, page: message.page } : prev));
-        setViewedSlide(message.page);
-      }
-      if (message.type === "bye") {
-        byeTimerRef.current = window.setTimeout(() => {
-          byeTimerRef.current = null;
-          stopPresenting(false);
-        }, 700);
-      }
-    });
-    presentChannelRef.current = channel;
-
-    setPresenting({ lesson, page: 1, total: 0 });
-    setViewedSlide(1);
-    // The PDF lives on the projector now; this window is the assistant.
-    setOpenedLesson(null);
-    setLastLesson(lesson);
-    setChatCollapsed(false);
-    pushAssistant(
-      reusing
-        ? `The classroom screen is now showing "${lesson.title}", from page 1.`
-        : `"${lesson.title}" is on your second screen. Use the bar below to change the page — the class only ever sees the lesson, never this chat.`,
-      { sourceRef: lesson.title, lessonId: lesson.id }
-    );
-  }
-
-  function stopPresenting(closeWindow = true) {
-    if (byeTimerRef.current !== null) {
-      window.clearTimeout(byeTimerRef.current);
-      byeTimerRef.current = null;
-    }
-    if (closeWindow) {
-      presentChannelRef.current?.post({ type: "stop" });
-      try {
-        presentWinRef.current?.close();
-      } catch {
-        /* already gone */
-      }
-    }
-    presentChannelRef.current?.close();
-    presentChannelRef.current = null;
-    presentWinRef.current = null;
-    setPresenting(null);
-    setViewedSlide(null);
-    refreshLessons();
-  }
-
-  // The class follows this window: every page change is pushed to the projector
-  // and becomes the slide the assistant is asked about.
-  function goToPage(next: number) {
-    const current = presentingRef.current;
-    if (!current) return;
-    const max = current.total || Number.MAX_SAFE_INTEGER;
-    const page = Math.min(Math.max(1, next), max);
-    if (page === current.page) return;
-    presentChannelRef.current?.post({ type: "page", page });
-    setPresenting({ ...current, page });
-    setViewedSlide(page);
-  }
-
-  // Arrow / page keys drive the projector, unless the teacher is typing.
-  useEffect(() => {
-    if (!presenting) return;
-    function onKey(e: KeyboardEvent) {
-      const tag = document.activeElement?.tagName;
-      if (tag === "TEXTAREA" || tag === "INPUT") return;
-      const page = presentingRef.current?.page ?? 1;
-      if (e.key === "ArrowRight" || e.key === "PageDown") {
-        e.preventDefault();
-        goToPage(page + 1);
-      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        e.preventDefault();
-        goToPage(page - 1);
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presenting]);
-
-  // Never leave a projector showing a lesson this window has walked away from.
-  useEffect(() => {
-    function closePresenter() {
-      presentChannelRef.current?.post({ type: "stop" });
-      try {
-        presentWinRef.current?.close();
-      } catch {
-        /* already gone */
-      }
-    }
-    window.addEventListener("beforeunload", closePresenter);
-    return () => {
-      window.removeEventListener("beforeunload", closePresenter);
-      closePresenter();
-      presentChannelRef.current?.close();
-    };
-  }, []);
 
   // Return to the clean starting screen (grade picker) with an empty session.
   function resetSession() {
