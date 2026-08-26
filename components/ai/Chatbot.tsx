@@ -62,6 +62,7 @@ import { FullscreenPdf, LessonPane } from "@/components/teacher/LessonPane";
 import { useTranscriptScroll } from "@/components/teacher/hooks/useTranscriptScroll";
 import { useLessonSplit } from "@/components/teacher/hooks/useLessonSplit";
 import { useTeacherLessons } from "@/components/teacher/hooks/useTeacherLessons";
+import { useChatThread } from "@/components/teacher/hooks/useChatThread";
 import {
   gradePath,
   TEACHER_FAIR,
@@ -108,7 +109,6 @@ export function Chatbot({
   fair?: boolean;
 } = {}) {
   const router = useRouter();
-  const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [openedLesson, setOpenedLesson] = useState<Lesson | null>(null);
@@ -148,8 +148,6 @@ export function Chatbot({
   const [presentBlocked, setPresentBlocked] = useState(false);
   const presentingRef = useRef<typeof presenting>(null);
   presentingRef.current = presenting;
-  // The lesson in play, readable from callbacks that run outside render.
-  const contextLessonRef = useRef<string | null>(null);
   const presentWinRef = useRef<Window | null>(null);
   const presentChannelRef = useRef<PresentChannel | null>(null);
   const byeTimerRef = useRef<number | null>(null);
@@ -157,8 +155,6 @@ export function Chatbot({
   // empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
   const pendingLessonIdRef = useRef<string | null>(null);
-  // Threads already pulled from the server this session.
-  const loadedThreadsRef = useRef<Set<string>>(new Set());
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // The teacher's lessons, their progress in them, and their access requests.
@@ -171,10 +167,6 @@ export function Chatbot({
     refreshLessons,
     requestAccess,
   } = useTeacherLessons(session);
-
-  // Follows the newest message unless the teacher has scrolled up to read.
-  const { scrollRef, atBottom, onTranscriptScroll, jumpToLatest, followLatest } =
-    useTranscriptScroll([messages, thinking]);
 
   // How the lesson viewer and the assistant share the screen.
   const { paneWidth, setPaneWidth, chatCollapsed, setChatCollapsed, startPaneDrag } =
@@ -198,12 +190,20 @@ export function Chatbot({
   })();
   const contextLessonId = contextLesson?.id ?? null;
 
-  // Only this lesson's turns are on screen; the rest stay in memory for when
-  // the teacher switches back.
-  const visibleMessages = messages.filter(
-    (m) => (m.lessonId ?? null) === contextLessonId
-  );
-  contextLessonRef.current = contextLessonId;
+  // The conversation for the lesson in play.
+  const {
+    messages,
+    setMessages,
+    visibleMessages,
+    contextLessonRef,
+    pushAssistant,
+    pushUser,
+    clearThread,
+  } = useChatThread(contextLessonId);
+
+  // Follows the newest message unless the teacher has scrolled up to read.
+  const { scrollRef, atBottom, onTranscriptScroll, jumpToLatest, followLatest } =
+    useTranscriptScroll([messages, thinking]);
 
   // Restore the previous session (a refresh mid-class shouldn't cost the chat).
   useEffect(() => {
@@ -244,43 +244,6 @@ export function Chatbot({
     if (selectedGrade !== null) rememberGrade(selectedGrade);
   }, [selectedGrade]);
 
-  // Pull the stored thread for the lesson in play, once per lesson. Local
-  // turns (the app's own "Opening ..." lines, and anything asked since) keep
-  // their place because both are tagged with the same lesson.
-  useEffect(() => {
-    if (!contextLessonId || loadedThreadsRef.current.has(contextLessonId)) return;
-    const lessonId = contextLessonId;
-    loadedThreadsRef.current.add(lessonId);
-    // No cancellation guard on purpose: React remounts effects in development,
-    // and throwing away a resolved fetch would leave the thread empty. The
-    // merge below is keyed by message id, so applying it twice is a no-op.
-    listChatMessages(lessonId)
-      .then((rows) => {
-        if (rows.length === 0) return;
-        const stored: AIMessage[] = rows.map((r) => ({
-          id: r.id,
-          role: r.role,
-          content: r.content,
-          timestamp: r.createdAt,
-          sourceRef: r.sourceRef ?? undefined,
-          lessonId: r.lessonId,
-        }));
-        setMessages((prev) => {
-          const known = new Set(prev.map((m) => m.id));
-          const fresh = stored.filter((m) => !known.has(m.id));
-          if (fresh.length === 0) return prev;
-          // History belongs before whatever this session has already added.
-          const mine = prev.filter((m) => (m.lessonId ?? null) === lessonId);
-          const others = prev.filter((m) => (m.lessonId ?? null) !== lessonId);
-          return [...others, ...fresh, ...mine];
-        });
-      })
-      .catch(() => {
-        // Unreadable history shouldn't block the lesson; allow a later retry.
-        loadedThreadsRef.current.delete(lessonId);
-      });
-  }, [contextLessonId]);
-
   // The restored lesson id only becomes a Lesson once the list has loaded.
   useEffect(() => {
     const id = pendingLessonIdRef.current;
@@ -301,20 +264,6 @@ export function Chatbot({
         Math.min(inputRef.current.scrollHeight, 180) + "px";
     }
   }, [input]);
-
-  function pushAssistant(content: string, extras: Partial<AIMessage> = {}) {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `a_${Date.now()}`,
-        role: "assistant",
-        content,
-        timestamp: new Date().toISOString(),
-        lessonId: contextLessonRef.current,
-        ...extras,
-      },
-    ]);
-  }
 
   // `retry` re-asks a question that's already in the transcript, so the failed
   // turn (and its error reply) must be trimmed off the history first.
@@ -428,20 +377,6 @@ export function Chatbot({
     void answerQuestion(text, true);
   }
 
-  // Wipe this lesson's conversation, on the server and on screen. Other
-  // lessons' threads are untouched.
-  async function clearLessonChat() {
-    const lesson = contextLessonRef.current;
-    if (!lesson) return;
-    setMessages((prev) => prev.filter((m) => (m.lessonId ?? null) !== lesson));
-    setFailedPrompt(null);
-    try {
-      await clearChatMessages(lesson);
-    } catch {
-      pushAssistant("I couldn't clear this lesson's chat just now. Please try again.");
-    }
-  }
-
   function openLesson(lesson: Lesson) {
     // Sequential unlocking — a teacher can only open their current lesson.
     if (lesson.accessStatus && lesson.accessStatus !== "available") {
@@ -553,14 +488,7 @@ export function Chatbot({
   function send(textOverride?: string) {
     const text = (textOverride ?? input).trim();
     if (!text) return;
-    const userMsg: AIMessage = {
-      id: `u_${Date.now()}`,
-      role: "user",
-      content: text,
-      timestamp: new Date().toISOString(),
-      lessonId: contextLessonId,
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    pushUser(text);
     setInput("");
     setFailedPrompt(null);
     // Sending is an intent to follow the answer.
@@ -1257,7 +1185,7 @@ export function Chatbot({
                 </button>
                 {contextLessonId && (
                   <button
-                    onClick={clearLessonChat}
+                    onClick={() => clearThread(pushAssistant)}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs transition",
                       light
