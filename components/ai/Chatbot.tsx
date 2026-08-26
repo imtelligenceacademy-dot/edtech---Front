@@ -39,7 +39,6 @@ import { cn, initials, stripMarkdown } from "@/lib/utils";
 import {
   getSession,
   logout,
-  listLessons,
   listFairProjects,
   clearChatMessages,
   listChatMessages,
@@ -62,6 +61,7 @@ import { PresentingBar } from "@/components/teacher/PresentingBar";
 import { FullscreenPdf, LessonPane } from "@/components/teacher/LessonPane";
 import { useTranscriptScroll } from "@/components/teacher/hooks/useTranscriptScroll";
 import { useLessonSplit } from "@/components/teacher/hooks/useLessonSplit";
+import { useTeacherLessons } from "@/components/teacher/hooks/useTeacherLessons";
 import {
   gradePath,
   TEACHER_FAIR,
@@ -119,8 +119,6 @@ export function Chatbot({
   // The last lesson opened this session. Kept after the pane is closed so the
   // side panel can offer to bring it back.
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [lessonsLoaded, setLessonsLoaded] = useState(false);
   const selectedGrade = grade;
   const [session, setSession] = useState<Session | null>(null);
   // The teacher experience is light-only.
@@ -129,16 +127,8 @@ export function Chatbot({
   // ICT Fair (shown only to teachers granted access). View-only: a project
   // grid in the main area, and the picked project opens full-screen. No chat
   // grounding, no progress tracking.
-  const [fairProjects, setFairProjects] = useState<FairProject[]>([]);
   const [fairViewer, setFairViewer] = useState<FairProject | null>(null);
   const showFairProjects = fair;
-  // Lesson ids with a pending access request to the super-admin.
-  const [requestedLessonIds, setRequestedLessonIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  // Self-reported position per lesson, so the welcome screen can offer to
-  // resume ("you stopped on slide 8 of 11") instead of just "open".
-  const [progressByLesson, setProgressByLesson] = useState<Record<string, ProgressEntry>>({});
   // The teacher is reading back through the transcript — don't yank them to the
   // bottom while a reply streams in.
   // A reply is in flight and can be stopped; the last question is kept so a
@@ -170,6 +160,17 @@ export function Chatbot({
   // Threads already pulled from the server this session.
   const loadedThreadsRef = useRef<Set<string>>(new Set());
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // The teacher's lessons, their progress in them, and their access requests.
+  const {
+    lessons,
+    lessonsLoaded,
+    progressByLesson,
+    requestedLessonIds,
+    fairProjects,
+    refreshLessons,
+    requestAccess,
+  } = useTeacherLessons(session);
 
   // Follows the newest message unless the teacher has scrolled up to read.
   const { scrollRef, atBottom, onTranscriptScroll, jumpToLatest, followLatest } =
@@ -291,28 +292,7 @@ export function Chatbot({
 
   useEffect(() => {
     getSession().then(setSession).catch(() => setSession(null));
-    // Load the teacher's real assigned lessons (with their linked PDFs).
-    listLessons()
-      .then(setLessons)
-      .catch(() => setLessons([]))
-      .finally(() => setLessonsLoaded(true));
-    // How far the teacher got in each lesson, for the "continue" card.
-    refreshProgress();
-    // Track which locked lessons the teacher has already asked to unlock.
-    listMyAccessRequests()
-      .then((reqs) =>
-        setRequestedLessonIds(
-          new Set(reqs.filter((r) => r.status === "pending").map((r) => r.lessonId))
-        )
-      )
-      .catch(() => {});
   }, []);
-
-  // Load ICT Fair projects once we know the teacher has been granted access.
-  useEffect(() => {
-    if (!session?.ictFairAccess) return;
-    listFairProjects().then(setFairProjects).catch(() => setFairProjects([]));
-  }, [session?.ictFairAccess]);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -462,36 +442,6 @@ export function Chatbot({
     }
   }
 
-  // Re-pull lesson access state (statuses shift after a completion/unlock).
-  function refreshLessons() {
-    listLessons().then(setLessons).catch(() => {});
-    refreshProgress();
-  }
-
-  function refreshProgress() {
-    listProgress()
-      .then((rows) => setProgressByLesson(Object.fromEntries(rows.map((r) => [r.lessonId, r]))))
-      .catch(() => {});
-  }
-
-  // Teacher asks the super-admin to unlock a locked lesson.
-  async function requestAccess(lesson: Lesson) {
-    setRequestedLessonIds((prev) => new Set(prev).add(lesson.id)); // optimistic
-    try {
-      await requestLessonAccess(lesson.id);
-    } catch {
-      // Roll back the optimistic flag and surface a gentle error.
-      setRequestedLessonIds((prev) => {
-        const next = new Set(prev);
-        next.delete(lesson.id);
-        return next;
-      });
-      pushAssistant(
-        `I couldn't send your access request for "${lesson.title}" just now. Please try again in a moment.`
-      );
-    }
-  }
-
   function openLesson(lesson: Lesson) {
     // Sequential unlocking — a teacher can only open their current lesson.
     if (lesson.accessStatus && lesson.accessStatus !== "available") {
@@ -548,8 +498,7 @@ export function Chatbot({
     const lesson = openedLesson;
     try {
       await saveLessonProgress(lesson.id, { complete: true });
-      const fresh = await listLessons().catch(() => null);
-      if (fresh) setLessons(fresh);
+      refreshLessons();
       pushAssistant(
         `Nice work — I've marked "${lesson.title}" as complete. Your next lesson unlocks after the waiting period; say "open the next lesson" and I'll open it once it's available.`,
         { sourceRef: lesson.title }
@@ -1061,7 +1010,7 @@ export function Chatbot({
               grade={selectedGrade}
               progressByLesson={progressByLesson}
               onOpenLesson={openLesson}
-              onRequestAccess={requestAccess}
+              onRequestAccess={(lesson) => requestAccess(lesson, pushAssistant)}
               onPrompt={(text) => send(text)}
               requestedLessonIds={requestedLessonIds}
               light={light}
