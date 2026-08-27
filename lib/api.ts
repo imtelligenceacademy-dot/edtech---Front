@@ -118,6 +118,29 @@ export async function apiFetch<T>(
   return parseResponse<T>(response);
 }
 
+// --- Saving a server file to disk ------------------------------------------ #
+// The API is on another origin, so <a download> is ignored and the browser just
+// opens the PDF in a tab. Fetching the bytes with the auth cookie and handing
+// the browser an object URL is what actually saves the file under its own name.
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function filenameFromResponse(res: Response): string | null {
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const encoded = cd.match(/filename\*=UTF-8''([^;]+)/);
+  if (encoded) return decodeURIComponent(encoded[1]);
+  const plain = cd.match(/filename="?([^";]+)"?/);
+  return plain ? plain[1] : null;
+}
+
 // --- Database backup (super-admin) ----------------------------------------- #
 async function inferBackupFilename(blob: Blob): Promise<string> {
   const prefix = await blob.slice(0, 32).text();
@@ -135,18 +158,8 @@ export async function downloadDatabase(retried = false): Promise<void> {
   }
   if (!res.ok) throw new Error("Could not generate the backup.");
 
-  const cd = res.headers.get("Content-Disposition") ?? "";
-  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
   const blob = await res.blob();
-  const filename = m ? decodeURIComponent(m[1]) : await inferBackupFilename(blob);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(blob, filenameFromResponse(res) ?? (await inferBackupFilename(blob)));
 }
 
 // Downloads a zip of every stored lesson/ICT-Fair PDF. The DB backup holds only
@@ -161,19 +174,10 @@ export async function downloadFilesArchive(retried = false): Promise<void> {
   }
   if (!res.ok) throw new Error("Could not build the PDF archive.");
 
-  const cd = res.headers.get("Content-Disposition") ?? "";
-  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
-  const filename = m ? decodeURIComponent(m[1]) : "im-telligence-lesson-pdfs.zip";
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(
+    await res.blob(),
+    filenameFromResponse(res) ?? "im-telligence-lesson-pdfs.zip"
+  );
 }
 
 export function emailDatabase(recipients: string[], note?: string) {
@@ -807,6 +811,81 @@ export async function fetchLessonPdf(
     throw new Error(detail);
   }
   return res.arrayBuffer();
+}
+
+// Saves one lesson PDF under its real filename. `View` opens it in a tab; this
+// is the one that puts it on the admin's machine.
+export async function downloadLessonPdf(
+  fileId: string,
+  filename: string,
+  retried = false
+): Promise<void> {
+  const res = await fetch(fileDownloadUrl(fileId), {
+    credentials: "include",
+    headers: withAuthHeaders(),
+  });
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return downloadLessonPdf(fileId, filename, true);
+  }
+  if (!res.ok) throw new Error("Could not download that PDF.");
+  saveBlob(await res.blob(), filenameFromResponse(res) ?? filename);
+}
+
+// Zips a whole selection server-side — a grade, a language, or hand-picked rows
+// — instead of the admin saving each PDF by hand.
+export async function downloadFileSelection(
+  fileIds: string[],
+  label?: string,
+  retried = false
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/files/archive`, {
+    method: "POST",
+    credentials: "include",
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ fileIds, label }),
+  });
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return downloadFileSelection(fileIds, label, true);
+  }
+  if (!res.ok) {
+    let detail = "Could not build the download.";
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string") detail = data.detail;
+    } catch {
+      // Server didn't send JSON — keep the generic message.
+    }
+    throw new Error(detail);
+  }
+  saveBlob(await res.blob(), filenameFromResponse(res) ?? "im-telligence-lessons.zip");
+}
+
+// What a selection would destroy, counted before the admin confirms it.
+export type DeletionImpact = {
+  files: number;
+  lessons: number;
+  teachers: number;
+  assignments: number;
+  progress: number;
+  chatMessages: number;
+  accessRequests: number;
+  lessonsInProgress: number;
+  lessonTitles: string[];
+  missing: number;
+};
+
+export function fileDeletionImpact(fileIds: string[]) {
+  return apiFetch<DeletionImpact>("/api/files/deletion-impact", {
+    method: "POST",
+    body: JSON.stringify({ fileIds }),
+  });
+}
+
+export function bulkDeleteFiles(fileIds: string[]) {
+  return apiFetch<{ deletedFiles: number; deletedLessons: number }>(
+    "/api/files/bulk-delete",
+    { method: "POST", body: JSON.stringify({ fileIds }) }
+  );
 }
 
 export function linkUploadedFileToLesson(fileId: string, lessonId: string) {
