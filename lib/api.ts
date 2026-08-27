@@ -452,6 +452,46 @@ export function putLessonAssignments(
   });
 }
 
+// The same edit across many lessons at once. Add and remove are separate lists
+// rather than a desired set: the selected lessons already have different
+// teachers on them, and adding one teacher must not strip the others.
+export type BulkAssignmentEdit = {
+  schoolId: string;
+  lessonIds: string[];
+  addTeacherIds?: string[];
+  removeTeacherIds?: string[];
+};
+
+export type BulkAssignmentPreview = {
+  lessons: number;
+  adds: number;
+  removes: number;
+  /** Removals that discard a teacher's existing progress on the lesson. */
+  progressLost: number;
+  teachersLosingProgress: string[];
+};
+
+export type BulkAssignmentResult = {
+  lessonsTouched: number;
+  assignmentsAdded: number;
+  assignmentsRemoved: number;
+  lessons: Lesson[];
+};
+
+export function previewBulkAssignments(edit: BulkAssignmentEdit) {
+  return apiFetch<BulkAssignmentPreview>("/api/lessons/assignments/bulk-preview", {
+    method: "POST",
+    body: JSON.stringify(edit),
+  });
+}
+
+export function bulkAssignments(edit: BulkAssignmentEdit) {
+  return apiFetch<BulkAssignmentResult>("/api/lessons/assignments/bulk", {
+    method: "POST",
+    body: JSON.stringify(edit),
+  });
+}
+
 export function unassignTeacher(lessonId: string, teacherId: string) {
   return apiFetch<Lesson>(`/api/lessons/${lessonId}/assign/${teacherId}`, {
     method: "DELETE",

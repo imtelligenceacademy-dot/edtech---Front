@@ -1,112 +1,224 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Info, Wand2, Search, ChevronRight, X, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, AlertTriangle, Check, Info, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
-import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
+import { CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { ApplyBar } from "@/components/super-admin/access/ApplyBar";
+import { LessonPicker } from "@/components/super-admin/access/LessonPicker";
+import { TeacherPicker } from "@/components/super-admin/access/TeacherPicker";
 import {
+  bulkAssignments,
   deleteLesson,
   listLessons,
   listSchools,
   listUsers,
-  putLessonAssignments,
+  previewBulkAssignments,
+  type BulkAssignmentPreview,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  EMPTY_LESSON_FILTERS,
+  computeEdit,
+  coverageOf,
+  describeEdit,
+  filterLessons,
+  nextIntent,
+  type Intent,
+  type LessonFilters,
+} from "@/lib/super-admin/access";
 import type { Lesson, School, User } from "@/types";
-
-// A teacher is "auto-matched" if the upload rules would already assign this
-// lesson to them (grade in their grades AND language matches). Anything you do
-// beyond that set is an explicit exception.
-function autoMatches(lesson: Lesson, teacher: User): boolean {
-  if (teacher.role !== "teacher") return false;
-  const gradeOk = (teacher.grades ?? []).includes(`G${lesson.grade}`);
-  const lang = lesson.language ?? null;
-  const tlang = teacher.language ?? null;
-  const langOk = !lang || tlang === lang || tlang === "both";
-  return gradeOk && langOk;
-}
-
-// Sort lessons by their curriculum number, then title, for a stable order.
-function byLessonNo(a: Lesson, b: Lesson): number {
-  return (a.lessonNo ?? 0) - (b.lessonNo ?? 0) || a.title.localeCompare(b.title);
-}
 
 export default function AccessControlPage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [lessonId, setLessonId] = useState("");
-  const [schoolId, setSchoolId] = useState("");
-  // Working set of selected teacher ids per lesson (mutated by toggles).
-  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Lesson-browser facets (column 1).
-  const [lessonQuery, setLessonQuery] = useState("");
-  const [gradeFilter, setGradeFilter] = useState<number | "all">("all");
-  const [langFilter, setLangFilter] = useState<string | "all">("all");
-  const [collapsedGrades, setCollapsedGrades] = useState<Set<number>>(() => new Set());
-  // Lesson pending deletion.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [schoolId, setSchoolId] = useState("");
+  const [filters, setFilters] = useState<LessonFilters>(EMPTY_LESSON_FILTERS);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  // What the admin has asked for, per teacher, on top of what the selection
+  // currently says. Cleared whenever the question changes.
+  const [intents, setIntents] = useState<Record<string, Intent>>({});
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  // A removal throws away teachers' progress, so that one gets confirmed.
+  const [preview, setPreview] = useState<BulkAssignmentPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+
   const [deletingLesson, setDeletingLesson] = useState<Lesson | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
-  useEffect(() => {
-    Promise.all([listLessons(), listSchools(), listUsers()])
-      .then(([lessonRows, schoolRows, userRows]) => {
-        setLessons(lessonRows);
-        setSchools(schoolRows);
-        setUsers(userRows);
-        setLessonId(lessonRows[0]?.id ?? "");
-        setSchoolId(schoolRows[0]?.id ?? "");
-        setAssignments(
-          Object.fromEntries(lessonRows.map((l) => [l.id, l.assignedTeacherIds]))
-        );
-      })
-      .finally(() => setLoading(false));
+  const lastTouched = useRef<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [lessonRows, schoolRows, userRows] = await Promise.all([
+        listLessons(),
+        listSchools(),
+        listUsers(),
+      ]);
+      setLessons(lessonRows);
+      setSchools(schoolRows);
+      setUsers(userRows);
+      setSchoolId((cur) => cur || schoolRows[0]?.id || "");
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Couldn't load Access Control.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (loading) return null;
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const lesson = lessons.find((l) => l.id === lessonId);
-  const schoolTeachers = users.filter(
-    (u) => u.role === "teacher" && u.schoolId === schoolId && u.status === "active"
+  const shownLessons = useMemo(
+    () => filterLessons(lessons, filters),
+    [lessons, filters]
   );
-  const schoolTeacherIds = new Set(schoolTeachers.map((t) => t.id));
-  const working = assignments[lessonId] ?? [];
-  const selected = working.filter((id) => schoolTeacherIds.has(id));
-
-  // Dirty if the working set differs from the persisted set for this school.
-  const persistedInSchool = (lesson?.assignedTeacherIds ?? []).filter((id) =>
-    schoolTeacherIds.has(id)
+  const selection = useMemo(
+    () => lessons.filter((l) => selectedIds.has(l.id)),
+    [lessons, selectedIds]
   );
-  const dirty =
-    selected.length !== persistedInSchool.length ||
-    selected.some((id) => !persistedInSchool.includes(id));
 
-  function confirmDiscardUnsaved(): boolean {
-    return (
-      !dirty ||
-      window.confirm("You have unsaved teacher assignment changes. Discard them?")
-    );
+  const schoolTeachers = useMemo(
+    () =>
+      users.filter(
+        (u) => u.role === "teacher" && u.schoolId === schoolId && u.status === "active"
+      ),
+    [users, schoolId]
+  );
+
+  const edit = useMemo(() => computeEdit(intents, selection), [intents, selection]);
+  const teacherName = useCallback(
+    (id: string) => users.find((u) => u.id === id)?.name ?? "a teacher",
+    [users]
+  );
+  const summary = useMemo(() => {
+    if (selection.length === 0) return "Tick some lessons to start.";
+    if (edit.adds === 0 && edit.removes === 0) {
+      return `${selection.length} lesson${
+        selection.length === 1 ? "" : "s"
+      } selected — now pick who should have them.`;
+    }
+    return describeEdit(edit, teacherName);
+  }, [edit, selection.length, teacherName]);
+
+  function clearPending() {
+    setIntents({});
+    setError(null);
+    setDone(null);
   }
 
-  function toggle(id: string) {
-    setSaved(false);
-    setError(null);
-    setAssignments((current) => {
-      const list = current[lessonId] ?? [];
-      return {
-        ...current,
-        [lessonId]: list.includes(id)
-          ? list.filter((t) => t !== id)
-          : [...list, id],
-      };
+  function toggleMany(ids: string[], next: boolean) {
+    clearPending();
+    setSelectedIds((cur) => {
+      const copy = new Set(cur);
+      for (const id of ids) {
+        if (next) copy.add(id);
+        else copy.delete(id);
+      }
+      return copy;
     });
+  }
+
+  function toggleLesson(id: string, shiftKey: boolean, list: string[]) {
+    const anchor = lastTouched.current;
+    lastTouched.current = id;
+    const turningOn = !selectedIds.has(id);
+
+    if (shiftKey && anchor && anchor !== id) {
+      const from = list.indexOf(anchor);
+      const to = list.indexOf(id);
+      if (from !== -1 && to !== -1) {
+        const [start, end] = from < to ? [from, to] : [to, from];
+        toggleMany(list.slice(start, end + 1), turningOn);
+        return;
+      }
+    }
+    toggleMany([id], turningOn);
+  }
+
+  function toggleTeacher(teacherId: string) {
+    setDone(null);
+    setError(null);
+    setIntents((cur) => {
+      const next = { ...cur };
+      const wanted = nextIntent(cur[teacherId], coverageOf(teacherId, selection));
+      if (wanted) next[teacherId] = wanted;
+      else delete next[teacherId];
+      return next;
+    });
+  }
+
+  function applyResult(updated: Lesson[]) {
+    const byId = new Map(updated.map((l) => [l.id, l]));
+    setLessons((cur) => cur.map((l) => byId.get(l.id) ?? l));
+  }
+
+  async function runApply() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await bulkAssignments({
+        schoolId,
+        lessonIds: Array.from(selectedIds),
+        addTeacherIds: edit.addIds,
+        removeTeacherIds: edit.removeIds,
+      });
+      applyResult(result.lessons);
+      setIntents({});
+      setPreview(null);
+      setDone(
+        `${result.assignmentsAdded} assignment${
+          result.assignmentsAdded === 1 ? "" : "s"
+        } added, ${result.assignmentsRemoved} removed, across ${
+          result.lessonsTouched
+        } lesson${result.lessonsTouched === 1 ? "" : "s"}.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not apply the changes.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Adding is harmless and applies straight away. Removing deletes the
+  // teacher's progress, so if any of it is real work, ask first.
+  async function apply() {
+    if (edit.removes === 0) return runApply();
+    setPreviewing(true);
+    setError(null);
+    try {
+      const result = await previewBulkAssignments({
+        schoolId,
+        lessonIds: Array.from(selectedIds),
+        addTeacherIds: edit.addIds,
+        removeTeacherIds: edit.removeIds,
+      });
+      if (result.progressLost === 0) {
+        await runApply();
+        return;
+      }
+      setPreview(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't check what this changes.");
+    } finally {
+      setPreviewing(false);
+    }
   }
 
   async function confirmDeleteLesson() {
@@ -114,15 +226,14 @@ export default function AccessControlPage() {
     setDeleteBusy(true);
     setError(null);
     try {
-      await deleteLesson(deletingLesson.id);
       const removedId = deletingLesson.id;
+      await deleteLesson(removedId);
       setLessons((cur) => cur.filter((l) => l.id !== removedId));
-      setAssignments((cur) => {
-        const next = { ...cur };
-        delete next[removedId];
-        return next;
+      setSelectedIds((cur) => {
+        const copy = new Set(cur);
+        copy.delete(removedId);
+        return copy;
       });
-      if (lessonId === removedId) setLessonId("");
       setDeletingLesson(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete lesson.");
@@ -131,66 +242,8 @@ export default function AccessControlPage() {
     }
   }
 
-  // One request carrying the whole set for this school. It either applies in
-  // full or not at all — the old loop of one call per teacher could stop
-  // halfway and leave the lesson assigned to some of the chosen teachers while
-  // telling the admin it had failed.
-  async function save() {
-    if (!lesson) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const updated = await putLessonAssignments(lessonId, schoolId, selected);
-      setLessons((cur) => cur.map((l) => (l.id === updated.id ? updated : l)));
-      setAssignments((cur) => ({ ...cur, [updated.id]: updated.assignedTeacherIds }));
-      setSaved(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save assignment.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // --- Lesson browser: facets + grouping (column 1) ----------------------- //
-  const allGrades = Array.from(new Set(lessons.map((l) => l.grade))).sort((a, b) => a - b);
-  const gradeCounts = new Map<number, number>();
-  for (const l of lessons) gradeCounts.set(l.grade, (gradeCounts.get(l.grade) ?? 0) + 1);
-  const languages = Array.from(
-    new Set(
-      lessons.map((l) => l.language).filter((v): v is NonNullable<typeof v> => Boolean(v))
-    )
-  ).sort();
-
-  const q = lessonQuery.trim().toLowerCase();
-  const filteredLessons = lessons.filter((l) => {
-    if (gradeFilter !== "all" && l.grade !== gradeFilter) return false;
-    if (langFilter !== "all" && (l.language ?? "") !== langFilter) return false;
-    if (q) {
-      const hay = `${l.title} ${l.subject ?? ""} grade ${l.grade}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-
-  // Group the filtered lessons under their grade for a scannable, scalable list.
-  const grouped = new Map<number, Lesson[]>();
-  for (const l of filteredLessons) {
-    const arr = grouped.get(l.grade) ?? [];
-    arr.push(l);
-    grouped.set(l.grade, arr);
-  }
-  grouped.forEach((arr) => arr.sort(byLessonNo));
-  const groupedGrades = Array.from(grouped.keys()).sort((a, b) => a - b);
-  const filtersActive = q !== "" || gradeFilter !== "all" || langFilter !== "all";
-
-  function clearFilters() {
-    setLessonQuery("");
-    setGradeFilter("all");
-    setLangFilter("all");
-  }
-
-  function toggleGradeCollapse(grade: number) {
-    setCollapsedGrades((cur) => {
+  function toggleCollapse(grade: number) {
+    setCollapsed((cur) => {
       const next = new Set(cur);
       if (next.has(grade)) next.delete(grade);
       else next.add(grade);
@@ -205,252 +258,151 @@ export default function AccessControlPage() {
         subtitle="Manual overrides — exceptions to the automatic grade & language rules."
       />
 
-      <div className="mb-6 flex items-start gap-2 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+      <div className="mb-4 flex items-start gap-2 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
         <Info size={16} className="mt-0.5 shrink-0 text-sky-600" />
         <p>
-          Lessons are normally assigned automatically when a PDF is uploaded —
-          to every teacher of that <strong>grade</strong> and{" "}
-          <strong>language</strong>. Use this page only for exceptions: give a
-          lesson to a teacher who wouldn&apos;t auto-match, or remove one who did.
-          Teachers marked <Badge tone="muted">Auto</Badge> are covered by the
-          rules; re-uploading the lesson&apos;s PDF can re-add an auto-matched
-          teacher you removed here.
+          Lessons are normally assigned automatically when a PDF is uploaded — to every
+          teacher of that <strong>grade</strong> and <strong>language</strong>. Use this page
+          for the exceptions. Tick <strong>as many lessons as you like</strong>, pick the
+          school, then add or remove teachers across all of them in one go; teachers marked{" "}
+          <Badge tone="muted">Auto</Badge> are already covered by the rules.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader
-            title="1. Lesson"
-            subtitle={`${filteredLessons.length} of ${lessons.length} shown`}
-          />
-          <CardBody className="space-y-3">
-            {/* Search */}
-            <div className="relative">
-              <Search
-                size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                value={lessonQuery}
-                onChange={(e) => setLessonQuery(e.target.value)}
-                placeholder="Search lessons…"
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
-              />
-              {lessonQuery && (
-                <button
-                  onClick={() => setLessonQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                  aria-label="Clear search"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+      {loadError && (
+        <Card className="mb-4 border-red-200 bg-red-50/60">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <AlertCircle size={16} className="shrink-0 text-red-500" />
+            <p className="flex-1 text-sm text-red-700">{loadError}</p>
+            <Button size="sm" variant="secondary" onClick={load}>
+              Try again
+            </Button>
+          </div>
+        </Card>
+      )}
 
-            {/* Grade rail */}
-            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-              <button
-                onClick={() => setGradeFilter("all")}
-                className={cn(
-                  "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                  gradeFilter === "all"
-                    ? "border-brand bg-brand-50 text-brand-700"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                )}
-              >
-                All
-              </button>
-              {allGrades.map((g) => (
+      {loading ? (
+        <p className="flex items-center justify-center gap-2 py-20 text-sm text-slate-400">
+          <Loader2 size={15} className="animate-spin" /> Loading lessons and teachers…
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 pb-24 lg:grid-cols-12">
+          <Card className="lg:col-span-5">
+            <LessonPicker
+              lessons={shownLessons}
+              total={lessons.length}
+              filters={filters}
+              onFilters={(next) => {
+                setFilters(next);
+                setDone(null);
+              }}
+              selected={selectedIds}
+              onToggleLesson={toggleLesson}
+              onToggleMany={toggleMany}
+              collapsed={collapsed}
+              onToggleCollapse={toggleCollapse}
+              onDeleteLesson={setDeletingLesson}
+            />
+          </Card>
+
+          <Card className="lg:col-span-3">
+            <CardHeader title="2. School" subtitle="Filters the teacher list" />
+            <CardBody className="space-y-2">
+              {schools.map((s) => (
                 <button
-                  key={g}
-                  onClick={() => setGradeFilter(g)}
+                  key={s.id}
+                  onClick={() => {
+                    if (s.id === schoolId) return;
+                    setSchoolId(s.id);
+                    clearPending();
+                  }}
                   className={cn(
-                    "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                    gradeFilter === g
-                      ? "border-brand bg-brand-50 text-brand-700"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    "w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                    schoolId === s.id
+                      ? "border-brand bg-brand-50"
+                      : "border-slate-200 hover:bg-slate-50"
                   )}
                 >
-                  G{g}
-                  <span className="ml-1 text-[10px] text-slate-400">{gradeCounts.get(g)}</span>
+                  <div className="font-medium text-slate-900">{s.name}</div>
+                  <div className="text-xs text-slate-500">{s.teacherCount} teachers</div>
                 </button>
               ))}
-            </div>
+            </CardBody>
+          </Card>
 
-            {/* Language segmented control (hidden when only one language exists) */}
-            {languages.length > 1 && (
-              <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5">
-                {["all", ...languages].map((l) => (
-                  <button
-                    key={l}
-                    onClick={() => setLangFilter(l)}
-                    className={cn(
-                      "flex-1 rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
-                      langFilter === l
-                        ? "bg-brand-50 text-brand-700"
-                        : "text-slate-500 hover:text-slate-700"
-                    )}
-                  >
-                    {l === "all" ? "All" : l.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+          <Card className="lg:col-span-4">
+            <TeacherPicker
+              teachers={schoolTeachers}
+              selection={selection}
+              intents={intents}
+              onToggle={toggleTeacher}
+            />
+          </Card>
+        </div>
+      )}
+
+      {done && (
+        <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 shadow-sm">
+            <Check size={13} /> {done}
+          </span>
+        </div>
+      )}
+
+      {!loading && (
+        <ApplyBar
+          edit={edit}
+          summary={summary}
+          busy={busy || previewing}
+          error={error}
+          onReset={clearPending}
+          onApply={apply}
+        />
+      )}
+
+      {/* Removing an assignment deletes that teacher's progress on the lesson,
+          so a removal that costs real work gets confirmed. */}
+      <Modal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title="This removes work teachers have done"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPreview(null)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={runApply} disabled={busy}>
+              {busy ? "Applying…" : `Remove ${preview?.removes ?? 0}`}
+            </Button>
+          </>
+        }
+      >
+        {preview && (
+          <div className="space-y-3 text-sm text-slate-600">
+            <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                <strong className="font-semibold">
+                  {preview.progressLost} of the {preview.removes} assignments being removed
+                </strong>{" "}
+                have progress on them — the teacher has opened or finished that lesson.
+                Removing the assignment deletes that record, and re-adding them starts it
+                from zero.
+              </span>
+            </p>
+            {preview.teachersLosingProgress.length > 0 && (
+              <p className="text-xs">
+                Affected: {preview.teachersLosingProgress.join(", ")}.
+              </p>
             )}
-
-            {filtersActive && (
-              <button
-                onClick={clearFilters}
-                className="flex items-center gap-1 text-xs text-slate-500 hover:text-brand-700"
-              >
-                <X size={12} /> Clear filters
-              </button>
-            )}
-
-            {/* Grouped, scrollable lesson list */}
-            <div className="max-h-[58vh] space-y-3 overflow-y-auto pr-0.5">
-              {groupedGrades.length === 0 && (
-                <p className="py-6 text-center text-xs text-slate-500">
-                  No lessons match your filters.
-                </p>
-              )}
-              {groupedGrades.map((g) => {
-                const groupLessons = grouped.get(g) ?? [];
-                const collapsed = collapsedGrades.has(g);
-                return (
-                  <div key={g}>
-                    <button
-                      onClick={() => toggleGradeCollapse(g)}
-                      className="sticky top-0 z-10 flex w-full items-center gap-1.5 bg-white/95 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur"
-                    >
-                      <ChevronRight
-                        size={13}
-                        className={cn("transition-transform", !collapsed && "rotate-90")}
-                      />
-                      Grade {g}
-                      <span className="text-slate-400">({groupLessons.length})</span>
-                    </button>
-                    {!collapsed && (
-                      <div className="mt-1 space-y-2">
-                        {groupLessons.map((l) => (
-                          <div key={l.id} className="group flex items-stretch gap-1">
-                            <button
-                              onClick={() => {
-                                if (l.id === lessonId || !confirmDiscardUnsaved()) return;
-                                setLessonId(l.id);
-                                setSaved(false);
-                                setError(null);
-                              }}
-                              className={cn(
-                                "min-w-0 flex-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                                lessonId === l.id
-                                  ? "border-brand bg-brand-50"
-                                  : "border-slate-200 hover:bg-slate-50"
-                              )}
-                            >
-                              <div className="truncate font-medium text-slate-900">{l.title}</div>
-                              <div className="text-xs text-slate-500">
-                                Grade {l.grade}
-                                {l.language ? ` · ${l.language.toUpperCase()}` : ""} · {l.subject}
-                              </div>
-                            </button>
-                            <button
-                              onClick={() => setDeletingLesson(l)}
-                              title="Delete lesson"
-                              aria-label={`Delete ${l.title}`}
-                              className="flex w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-400 opacity-0 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader title="2. School" subtitle="Filters the teacher list" />
-          <CardBody className="space-y-2">
-            {schools.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => {
-                  if (s.id === schoolId || !confirmDiscardUnsaved()) return;
-                  setSchoolId(s.id);
-                  setSaved(false);
-                  setError(null);
-                }}
-                className={cn(
-                  "w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                  schoolId === s.id
-                    ? "border-brand bg-brand-50"
-                    : "border-slate-200 hover:bg-slate-50"
-                )}
-              >
-                <div className="font-medium text-slate-900">{s.name}</div>
-                <div className="text-xs text-slate-500">{s.teacherCount} teachers</div>
-              </button>
-            ))}
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader title="3. Teachers" subtitle={`${selected.length} assigned here`} />
-          <CardBody className="space-y-2">
-            {schoolTeachers.length === 0 && (
-              <p className="text-xs text-slate-500">No active teachers in this school.</p>
-            )}
-            {schoolTeachers.map((t) => {
-              const on = selected.includes(t.id);
-              const auto = lesson ? autoMatches(lesson, t) : false;
-              const isException = on !== auto; // assigned-but-not-auto, or auto-but-removed
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => toggle(t.id)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                    on ? "border-brand bg-brand-50" : "border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block font-medium text-slate-900">{t.name}</span>
-                    <span className="block truncate text-xs text-slate-500">{t.email}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-1">
-                      {auto && <Badge tone="muted">Auto</Badge>}
-                      {isException && (
-                        <Badge tone="warning">
-                          <Wand2 size={10} /> {on ? "Added" : "Removed"} override
-                        </Badge>
-                      )}
-                    </span>
-                  </span>
-                  {on && <Check size={14} className="shrink-0 text-brand" />}
-                </button>
-              );
-            })}
-          </CardBody>
-        </Card>
-      </div>
-
-      <div className="mt-6 flex items-center justify-end gap-3">
-        {error && <span className="text-xs text-red-600">{error}</span>}
-        {saved && !dirty && (
-          <Badge tone="success">
-            <Check size={12} /> Assignment saved
-          </Badge>
+            <p className="text-xs">
+              {preview.adds > 0 && `${preview.adds} assignments will also be added. `}
+              {preview.lessons} lesson{preview.lessons === 1 ? "" : "s"} change in total.
+            </p>
+          </div>
         )}
-        <Button onClick={save} disabled={saving || !dirty}>
-          {saving ? "Saving…" : "Save changes"}
-        </Button>
-      </div>
+      </Modal>
 
-      {/* Delete-lesson confirmation */}
       <Modal
         open={deletingLesson !== null}
         onClose={() => setDeletingLesson(null)}
@@ -468,8 +420,9 @@ export default function AccessControlPage() {
       >
         <p className="text-sm text-slate-600">
           Delete{" "}
-          <span className="font-medium text-slate-900">{deletingLesson?.title}</span>? This removes
-          it from every teacher and their progress on it, and deletes its PDF. This cannot be undone.
+          <span className="font-medium text-slate-900">{deletingLesson?.title}</span>? This
+          removes it from every teacher and their progress on it, and deletes its PDF. This
+          cannot be undone.
         </p>
       </Modal>
     </>
