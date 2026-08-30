@@ -15,6 +15,7 @@ import {
   Database,
   Unlock,
   MessagesSquare,
+  ListChecks,
   X,
 } from "lucide-react";
 import type { Role } from "@/types";
@@ -31,6 +32,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { href: "/super-admin/files", label: "Files", icon: FileUp },
     { href: "/super-admin/access", label: "Access Control", icon: KeyRound },
     { href: "/super-admin/lesson-access", label: "Lesson Unlock", icon: Unlock },
+    { href: "/super-admin/progress", label: "Progress", icon: ListChecks },
     { href: "/super-admin/reports", label: "Reports", icon: FileBarChart2 },
     { href: "/super-admin/chats", label: "Teacher Chats", icon: MessagesSquare },
     { href: "/super-admin/security", label: "Security Logs", icon: ShieldCheck },
