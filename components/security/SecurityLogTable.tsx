@@ -17,7 +17,7 @@ export const eventLabel: Record<SecurityEventType, string> = {
   "account-locked": "Account locked",
   "foreign-device": "New device",
   "new-ip": "New address",
-  "suspicious-location": "Suspicious location",
+  "suspicious-location": "Possible account sharing",
   "blocked-second-device": "Blocked second device",
   "password-reset": "Password reset",
   "signed-out-all": "Signed out everywhere",
