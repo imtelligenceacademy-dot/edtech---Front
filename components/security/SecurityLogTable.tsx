@@ -1,92 +1,117 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronRight, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { SecurityLogDetailModal } from "./SecurityLogDetailModal";
 import { formatDate, cn } from "@/lib/utils";
 import type { SecurityEventType, SecurityLog } from "@/types";
 
-const eventLabel: Record<SecurityEventType, string> = {
-  "normal-login": "Normal login",
-  "foreign-device": "Foreign device",
-  "new-ip": "New IP detected",
+// The first five names predate the rest, and two of them were being written for
+// things that had not happened — a wrong password logged as "New IP detected",
+// a lockout as "Blocked second device". Rows from before that fix still carry
+// the old values, so those two are labelled for what they actually were.
+export const eventLabel: Record<SecurityEventType, string> = {
+  "normal-login": "Signed in",
+  "failed-login": "Wrong password",
+  "account-locked": "Account locked",
+  "foreign-device": "New device",
+  "new-ip": "New address",
   "suspicious-location": "Suspicious location",
   "blocked-second-device": "Blocked second device",
+  "password-reset": "Password reset",
+  "signed-out-all": "Signed out everywhere",
 };
 
-const statusTone: Record<
-  SecurityLog["status"],
-  { tone: Parameters<typeof Badge>[0]["tone"]; label: string }
-> = {
-  ok: { tone: "success", label: "OK" },
-  warning: { tone: "warning", label: "Warning" },
-  blocked: { tone: "danger", label: "Blocked" },
+const eventTone: Record<SecurityEventType, Parameters<typeof Badge>[0]["tone"]> = {
+  "normal-login": "success",
+  "failed-login": "warning",
+  "account-locked": "danger",
+  "foreign-device": "warning",
+  "new-ip": "warning",
+  "suspicious-location": "danger",
+  "blocked-second-device": "danger",
+  "password-reset": "warning",
+  "signed-out-all": "info",
 };
 
 export function SecurityLogTable({ logs }: { logs: SecurityLog[] }) {
-  const dark = false;
+  const [openId, setOpenId] = useState<string | null>(null);
   const muted = "text-slate-500";
-  const strong = "text-slate-900";
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-xl border backdrop-blur",
-        dark ? "border-white/10 bg-white/[0.03]" : "border-slate-200 bg-white"
-      )}
-    >
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className={cn("text-left text-[11px] uppercase tracking-wider", muted)}>
-              {["User", "Role", "Event", "IP / Location", "Device", "Status", "Time"].map((h) => (
-                <th key={h} className="px-4 py-2.5 font-medium">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((l) => {
-              const s = statusTone[l.status];
-              return (
-                <tr key={l.id} className={cn("border-t", dark ? "border-white/5" : "border-slate-100")}>
+    <>
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className={cn("text-left text-[11px] uppercase tracking-wider", muted)}>
+                {["User", "Event", "Where from", "Device", "Time", ""].map((h) => (
+                  <th key={h} className="px-4 py-2.5 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr
+                  key={l.id}
+                  onClick={() => setOpenId(l.id)}
+                  className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
+                >
                   <td className="px-4 py-3">
-                    <div className={cn("font-medium", strong)}>{l.userName}</div>
-                    <div className={cn("text-xs", muted)}>{l.userId}</div>
-                  </td>
-                  <td className={cn("px-4 py-3 capitalize", dark ? "text-slate-300" : "text-slate-600")}>
-                    {l.role.replace("-", " ")}
-                  </td>
-                  <td className={cn("px-4 py-3", dark ? "text-slate-300" : "text-slate-600")}>
-                    {eventLabel[l.event]}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className={cn("font-mono text-xs", dark ? "text-slate-300" : "text-slate-700")}>
-                      {l.ip}
-                    </div>
-                    <div className={cn("text-xs", muted)}>
-                      {l.location.label} ({l.location.lat.toFixed(2)}, {l.location.lng.toFixed(2)})
+                    <div className="font-medium text-slate-900">{l.userName}</div>
+                    <div className={cn("text-xs capitalize", muted)}>
+                      {l.role?.replace("-", " ") ?? "—"}
                     </div>
                   </td>
-                  <td className={cn("px-4 py-3 text-xs", dark ? "text-slate-300" : "text-slate-600")}>
-                    {l.device}
+                  <td className="px-4 py-3">
+                    <Badge tone={eventTone[l.event]}>{eventLabel[l.event]}</Badge>
+                    {l.detail && (
+                      <div className={cn("mt-1 text-xs", muted)}>{l.detail}</div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge tone={s.tone}>{s.label}</Badge>
+                    <div className="font-mono text-xs text-slate-700">{l.ip || "—"}</div>
+                    {/* No location unless one was actually resolved. */}
+                    {l.locationLabel ? (
+                      <div className={cn("flex items-center gap-1 text-xs", muted)}>
+                        <MapPin size={11} /> {l.locationLabel}
+                      </div>
+                    ) : (
+                      <div className={cn("text-xs", muted)}>—</div>
+                    )}
+                  </td>
+                  <td className={cn("px-4 py-3 text-xs", "text-slate-600")}>
+                    {l.deviceLabel || "—"}
                   </td>
                   <td className={cn("px-4 py-3 text-xs", muted)}>{formatDate(l.timestamp)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-0.5 text-xs font-medium",
+                        "text-slate-400"
+                      )}
+                    >
+                      Details <ChevronRight size={13} />
+                    </span>
+                  </td>
                 </tr>
-              );
-            })}
-            {logs.length === 0 && (
-              <tr>
-                <td colSpan={7} className={cn("px-4 py-6 text-center", muted)}>
-                  No security events.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              ))}
+              {logs.length === 0 && (
+                <tr>
+                  <td colSpan={6} className={cn("px-4 py-6 text-center", muted)}>
+                    No security events.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+
+      <SecurityLogDetailModal logId={openId} onClose={() => setOpenId(null)} />
+    </>
   );
 }

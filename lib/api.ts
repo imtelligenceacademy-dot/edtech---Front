@@ -10,6 +10,7 @@ import type {
   Role,
   School,
   SecurityLog,
+  SecurityLogDetail,
   Session,
   TeacherAccess,
   TeacherLessonAccessRow,
@@ -718,22 +719,14 @@ export async function downloadReport(
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-type ApiSecurityLog = Omit<SecurityLog, "location" | "role"> & {
-  role: Role | null;
-  locationLabel: string;
-};
-
-function toSecurityLog(log: ApiSecurityLog): SecurityLog {
-  return {
-    ...log,
-    role: log.role ?? "teacher",
-    location: { lat: 0, lng: 0, label: log.locationLabel },
-  };
+export function listSecurityLogs() {
+  return apiFetch<SecurityLog[]>("/api/security-logs");
 }
 
-export async function listSecurityLogs() {
-  const logs = await apiFetch<ApiSecurityLog[]>("/api/security-logs");
-  return logs.map(toSecurityLog);
+// One event with the context that makes it readable: is this address familiar,
+// what else happened around it, and how many sessions the account has open.
+export function getSecurityLogDetail(logId: string) {
+  return apiFetch<SecurityLogDetail>(`/api/security-logs/${logId}`);
 }
 
 export type StalledTeacher = {
@@ -766,10 +759,10 @@ export type SuperAdminOverview = {
 export async function getSuperAdminOverview(): Promise<SuperAdminOverview> {
   const data = await apiFetch<
     Omit<SuperAdminOverview, "securityAlerts"> & {
-      securityAlerts: ApiSecurityLog[];
+      securityAlerts: SecurityLog[];
     }
   >("/api/dashboard/super-admin");
-  return { ...data, securityAlerts: data.securityAlerts.map(toSecurityLog) };
+  return data;
 }
 
 // What a set of filenames would do if uploaded. Nothing is stored — this is

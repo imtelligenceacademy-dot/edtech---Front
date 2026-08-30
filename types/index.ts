@@ -183,7 +183,11 @@ export type SecurityEventType =
   | "foreign-device"
   | "new-ip"
   | "suspicious-location"
-  | "blocked-second-device";
+  | "blocked-second-device"
+  | "failed-login"
+  | "account-locked"
+  | "password-reset"
+  | "signed-out-all";
 
 export interface SecurityLog {
   id: string;
@@ -192,11 +196,42 @@ export interface SecurityLog {
   role: Role;
   schoolId?: string;
   ip: string;
-  location: { lat: number; lng: number; label: string };
-  device: string;
+  // Empty when location lookups are off, which is the default. Never faked:
+  // the table used to print (0.00, 0.00) for every row on earth.
+  locationLabel: string;
+  locationLat: number | null;
+  locationLng: number | null;
+  device: string; // the raw User-Agent
+  deviceLabel: string; // "Chrome 141 on Windows 11 · Desktop"
+  detail: string;
   event: SecurityEventType;
   status: "ok" | "warning" | "blocked";
   timestamp: string;
+}
+
+export interface IpHistory {
+  signIns: number;
+  failedAttempts: number;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  users: string[];
+}
+
+export interface ActiveSession {
+  id: string;
+  deviceLabel: string;
+  ip: string;
+  createdAt: string;
+  expiresAt: string;
+  /** Same address and browser as the event — not proof it is the same session. */
+  matchesEvent: boolean;
+}
+
+export interface SecurityLogDetail {
+  log: SecurityLog;
+  ipHistory: IpHistory;
+  recentEvents: SecurityLog[];
+  activeSessions: ActiveSession[];
 }
 
 export interface AIMessage {
