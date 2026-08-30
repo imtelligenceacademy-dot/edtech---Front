@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Role, Session } from "@/types";
 import { getSession } from "@/lib/api";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, hasNavigation } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
 export function DashboardShell({
@@ -18,6 +18,10 @@ export function DashboardShell({
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
+  // A role with a single destination gets no sidebar at all - an empty rail,
+  // or one holding one link, is a permanent reminder that there is nowhere
+  // else to go. The topbar carries the branding instead.
+  const navigable = hasNavigation(role);
 
   useEffect(() => {
     let alive = true;
@@ -52,8 +56,8 @@ export function DashboardShell({
   return (
     <div className="relative min-h-screen flex overflow-hidden bg-slate-50">
       <div className="relative z-10 flex w-full">
-      <Sidebar role={role} />
-      {navigationOpen && (
+      {navigable && <Sidebar role={role} />}
+      {navigable && navigationOpen && (
         <>
           <button
             type="button"
@@ -73,7 +77,7 @@ export function DashboardShell({
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar
           session={session}
-          onOpenNavigation={() => setNavigationOpen(true)}
+          onOpenNavigation={navigable ? () => setNavigationOpen(true) : undefined}
         />
         <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-[1400px] w-full">{children}</main>
       </div>

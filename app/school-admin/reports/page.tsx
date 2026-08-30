@@ -1,24 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect, useState } from "react";
-import { PageHeader } from "@/components/layout/DashboardShell";
-import { ReportSection } from "@/components/reports/ReportSection";
-import { getSession } from "@/lib/api";
-
+// Reports are something a school admin asks the assistant for, not a place
+// they go. Kept as a redirect so existing bookmarks still land somewhere real.
 export default function SchoolAdminReportsPage() {
-  const [s, setS] = useState<{ userId: string; schoolId?: string } | null>(null);
-  useEffect(() => {
-    getSession().then((sess) => setS({ userId: sess.userId, schoolId: sess.schoolId }));
-  }, []);
-  if (!s) return null;
-
-  return (
-    <>
-      <PageHeader
-        title="Reports"
-        subtitle="Request and download reports for your school."
-      />
-      <ReportSection scope="school" schoolId={s.schoolId} />
-    </>
-  );
+  redirect("/school-admin/ai");
 }

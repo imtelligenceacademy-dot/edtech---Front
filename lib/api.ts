@@ -212,7 +212,7 @@ export function homePathFor(role: Role): string {
     case "super-admin":
       return "/super-admin/dashboard";
     case "school-admin":
-      return "/school-admin/dashboard";
+      return "/school-admin/ai";
     case "teacher":
       return "/teacher";
   }

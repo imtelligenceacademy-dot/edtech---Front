@@ -36,16 +36,20 @@ const navByRole: Record<Role, NavItem[]> = {
     { href: "/super-admin/security", label: "Security Logs", icon: ShieldCheck },
     { href: "/super-admin/backup", label: "Backup", icon: Database },
   ],
-  "school-admin": [
-    { href: "/school-admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/school-admin/ai", label: "AI Assistant", icon: Sparkles },
-    { href: "/school-admin/reports", label: "Reports", icon: FileBarChart2 },
-  ],
+  // Empty on purpose. A school admin has one destination - the assistant - so
+  // there is nothing to navigate between. A sidebar listing a single link is
+  // furniture; `hasNavigation` below is what lets the shell leave it out.
+  "school-admin": [],
   teacher: [
     { href: "/teacher", label: "AI Assistant", icon: Sparkles },
     { href: "/teacher/progress", label: "Progress", icon: TrendingUp },
   ],
 };
+
+/** Whether this role has more than one destination, and so needs a sidebar. */
+export function hasNavigation(role: Role): boolean {
+  return navByRole[role].length > 0;
+}
 
 export function Sidebar({
   role,

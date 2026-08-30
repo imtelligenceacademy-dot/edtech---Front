@@ -6,7 +6,7 @@ import {
   Bot,
   User as UserIcon,
   Users,
-  AlertTriangle,
+  Milestone,
   TrendingUp,
   FileText,
   Download,
@@ -18,7 +18,7 @@ import type { AIMessage, Session } from "@/types";
 
 const SUGGESTIONS = [
   { label: "How many teachers do I have and what grades?", icon: Users },
-  { label: "Which teachers are behind or have late lessons?", icon: AlertTriangle },
+  { label: "Where is each of my teachers up to right now?", icon: Milestone },
   { label: "What's the overall completion rate?", icon: TrendingUp },
   { label: "Generate a downloadable report of my school", icon: FileText },
 ];
@@ -31,8 +31,9 @@ const REPORT_INTENT =
 type ReportStatus = "idle" | "loading" | "done" | "error";
 type ChatMessage = AIMessage & { kind?: "report"; reportStatus?: ReportStatus };
 
-// Rendered inside the school-admin DashboardShell (sidebar + topbar stay).
-// Fills the content area; theme follows the shell's toggle.
+// The whole of the school-admin experience. There is no dashboard and no
+// sidebar behind this - a principal signs in and lands here, and everything
+// they can find out about their school they find out by asking.
 export function SchoolAdminChat() {
   const light = true;
 
@@ -152,24 +153,6 @@ export function SchoolAdminChat() {
         light ? "border-slate-200 bg-white/70" : "border-white/10 bg-white/[0.03]"
       )}
     >
-      {/* Slim context header (no duplicate controls — the topbar has those) */}
-      <div className={cn("flex items-center gap-3 border-b px-5 py-3", light ? "border-slate-200/60" : "border-white/5")}>
-        <div className="relative">
-          <img
-            src="/logo.png"
-            alt="IM-Telligence"
-            className="h-8 w-8 rounded-full bg-white object-contain p-0.5 shadow-lg shadow-brand/30"
-          />
-          <div className={cn("absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border-2 bg-emerald-400", light ? "border-white" : "border-slate-900")} />
-        </div>
-        <div className="min-w-0">
-          <p className={cn("text-sm font-semibold", light ? "text-slate-900" : "text-white")}>IM-Telligence AI</p>
-          <p className={cn("truncate text-[11px]", light ? "text-slate-500" : "text-slate-400")}>
-            School operations assistant · grounded in your school&apos;s live data
-          </p>
-        </div>
-      </div>
-
       {/* Body */}
       <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto px-4 py-6 sm:px-8">
         {isEmpty ? (
@@ -208,7 +191,7 @@ export function SchoolAdminChat() {
                 }
               }}
               rows={1}
-              placeholder="Ask about your teachers, progress, late lessons or alerts…"
+              placeholder="Ask about your teachers, your school's progress, or a report…"
               className={cn("max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm focus:outline-none", light ? "text-slate-900 placeholder:text-slate-400" : "text-white placeholder:text-slate-500")}
             />
             <button
@@ -245,8 +228,13 @@ function Welcome({
       <h1 className={cn("bg-clip-text text-3xl font-semibold text-transparent sm:text-4xl", light ? "bg-gradient-to-r from-slate-900 via-slate-700 to-slate-500" : "bg-gradient-to-r from-white via-slate-200 to-slate-400")}>
         {session ? `Hi ${session.name.split(" ")[0]}, how's your school doing?` : "How's your school doing?"}
       </h1>
+      {/* This is the only page a school admin has, so it is also the only
+          place that can tell them what they can ask for. Phrased as "where
+          they are up to" rather than "who is behind" - the assistant reports
+          position, it does not put teachers on a list. */}
       <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
-        Ask about your teachers, their progress, late lessons, or security alerts.
+        Ask about your teachers, where they have got to, or how the school is
+        progressing &mdash; or ask for a report and I&apos;ll write you one to download.
       </p>
       <div className="mt-8 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
         {SUGGESTIONS.map((s) => {
