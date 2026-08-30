@@ -626,32 +626,45 @@ export function streamAdminAI(
   return streamSSE("/api/ai/admin/chat/stream", payload, handlers);
 }
 
-// Asks the school-admin assistant to author a narrative report from the school's
-// live data and downloads it as a Word (.docx) file. One auth-refresh retry.
-export async function downloadSchoolAIReport(retried = false): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/api/ai/admin/report`, {
+// Asks the assistant to author a narrative report from live data and downloads
+// it as a Word (.docx). `admin` is one school, `super` is every school compared.
+// One auth-refresh retry.
+async function downloadAIReport(
+  path: "/api/ai/admin/report" | "/api/ai/super/report",
+  fallbackName: string,
+  retried = false
+): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     credentials: "include",
     headers: withAuthHeaders(),
   });
   if (res.status === 401 && !retried) {
-    if (await refreshAccessToken()) return downloadSchoolAIReport(true);
+    if (await refreshAccessToken()) return downloadAIReport(path, fallbackName, true);
   }
-  if (!res.ok) throw new Error("Could not generate the report.");
+  if (!res.ok) {
+    let detail = "Could not generate the report.";
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string") detail = data.detail;
+    } catch {
+      // Not JSON (or a rate-limit body we can't parse) — keep the generic text.
+    }
+    throw new Error(detail);
+  }
+  saveBlob(await res.blob(), filenameFromResponse(res) ?? fallbackName);
+}
 
-  const cd = res.headers.get("Content-Disposition") ?? "";
-  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
-  const filename = m ? decodeURIComponent(m[1]) : "IM-Telligence AI Report.docx";
+export function downloadSchoolAIReport(): Promise<void> {
+  return downloadAIReport("/api/ai/admin/report", "IM-Telligence AI Report.docx");
+}
 
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+// The platform report with the narrative the school admin has always had.
+export function downloadPlatformAIReport(): Promise<void> {
+  return downloadAIReport(
+    "/api/ai/super/report",
+    "IM-Telligence AI Platform Report.docx"
+  );
 }
 
 export function listReports() {

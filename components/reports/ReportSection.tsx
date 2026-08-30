@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Eye, FileText, Loader2 } from "lucide-react";
+import { Download, Eye, FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { formatDate, cn } from "@/lib/utils";
-import { downloadReport as downloadWordReport, listReports } from "@/lib/api";
+import {
+  downloadPlatformAIReport,
+  downloadReport as downloadWordReport,
+  listReports,
+} from "@/lib/api";
 import type { Report, ReportStatus } from "@/types";
 
 const statusTone: Record<
@@ -34,6 +38,7 @@ export function ReportSection({
   const [viewing, setViewing] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -46,6 +51,20 @@ export function ReportSection({
       setDownloadError(e instanceof Error ? e.message : "Download failed.");
     } finally {
       setDownloading(false);
+    }
+  }
+
+  // The narrative version. The school admin reaches theirs from the assistant;
+  // the super-admin has no assistant, so this is their way in.
+  async function handleDownloadAI() {
+    setDownloadError(null);
+    setAiBusy(true);
+    try {
+      await downloadPlatformAIReport();
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : "Download failed.");
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -112,10 +131,24 @@ export function ReportSection({
           <Button variant="secondary" onClick={exportAll} disabled={reports.length === 0}>
             <Download size={14} /> Export CSV
           </Button>
-          <Button onClick={handleDownloadWord} disabled={downloading}>
+          <Button
+            variant="secondary"
+            onClick={handleDownloadWord}
+            disabled={downloading || aiBusy}
+          >
             <FileText size={14} />
-            {downloading ? "Preparing…" : "Download Word report"}
+            {downloading ? "Preparing…" : "Data only"}
           </Button>
+          {scope === "global" && (
+            <Button onClick={handleDownloadAI} disabled={aiBusy || downloading}>
+              {aiBusy ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              {aiBusy ? "Writing…" : "Report with summary"}
+            </Button>
+          )}
         </div>
       </div>
       {downloadError && <p className="text-xs text-red-600">{downloadError}</p>}
