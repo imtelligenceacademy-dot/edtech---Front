@@ -43,7 +43,7 @@ export default function AccessControlPage() {
   const [schoolId, setSchoolId] = useState("");
   const [filters, setFilters] = useState<LessonFilters>(EMPTY_LESSON_FILTERS);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   // What the admin has asked for, per teacher, on top of what the selection
   // currently says. Cleared whenever the question changes.
   const [intents, setIntents] = useState<Record<string, Intent>>({});
@@ -242,11 +242,11 @@ export default function AccessControlPage() {
     }
   }
 
-  function toggleCollapse(grade: number) {
+  function toggleCollapse(key: string) {
     setCollapsed((cur) => {
       const next = new Set(cur);
-      if (next.has(grade)) next.delete(grade);
-      else next.add(grade);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -290,6 +290,7 @@ export default function AccessControlPage() {
           <Card className="lg:col-span-5">
             <LessonPicker
               lessons={shownLessons}
+              allLessons={lessons}
               total={lessons.length}
               filters={filters}
               onFilters={(next) => {
@@ -324,7 +325,10 @@ export default function AccessControlPage() {
                   )}
                 >
                   <div className="font-medium text-slate-900">{s.name}</div>
-                  <div className="text-xs text-slate-500">{s.teacherCount} teachers</div>
+                  <div className="text-xs text-slate-500">
+                    Year {s.programYear} · {s.teacherCount} teacher
+                    {s.teacherCount === 1 ? "" : "s"}
+                  </div>
                 </button>
               ))}
             </CardBody>

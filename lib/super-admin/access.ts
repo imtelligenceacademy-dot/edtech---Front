@@ -14,15 +14,30 @@ export type Intent = "add" | "remove";
 
 export type LessonFilters = {
   query: string;
+  year: number | "all";
   grade: number | "all";
   lang: string | "all";
 };
 
 export const EMPTY_LESSON_FILTERS: LessonFilters = {
   query: "",
+  year: "all",
   grade: "all",
   lang: "all",
 };
+
+/**
+ * Year 1 and Year 2 are separate curricula, not two halves of one. The same
+ * grade exists in both and means different lessons, so a list that mixes them
+ * shows two "Grade 7 Lesson 1" rows that are not the same lesson at all.
+ *
+ * The backend treats a missing year as 2 (the column defaults to it and
+ * kits.py reads `lesson.year or 2`), so this does too rather than inventing a
+ * third bucket for legacy rows.
+ */
+export function yearOf(lesson: Lesson): number {
+  return lesson.year ?? 2;
+}
 
 /**
  * A teacher is "auto-matched" when the upload rules would already give them
@@ -48,30 +63,57 @@ export function filterLessons(lessons: Lesson[], filters: LessonFilters): Lesson
   // order it was typed in.
   const terms = filters.query.toLowerCase().split(/\s+/).filter(Boolean);
   return lessons.filter((l) => {
+    if (filters.year !== "all" && yearOf(l) !== filters.year) return false;
     if (filters.grade !== "all" && l.grade !== filters.grade) return false;
     if (filters.lang !== "all" && (l.language ?? "") !== filters.lang) return false;
     if (terms.length === 0) return true;
-    const hay = `${l.title} ${l.subject ?? ""} ${l.course ?? ""} grade ${l.grade}`.toLowerCase();
+    const hay = `${l.title} ${l.subject ?? ""} ${l.course ?? ""} grade ${
+      l.grade
+    } year ${yearOf(l)}`.toLowerCase();
     return terms.every((t) => hay.includes(t));
   });
 }
 
 export function filtersActive(filters: LessonFilters): boolean {
-  return filters.query.trim() !== "" || filters.grade !== "all" || filters.lang !== "all";
+  return (
+    filters.query.trim() !== "" ||
+    filters.year !== "all" ||
+    filters.grade !== "all" ||
+    filters.lang !== "all"
+  );
 }
 
-export type GradeGroup = { grade: number; lessons: Lesson[] };
+export type TrackGroup = {
+  /** Stable across renders, and what the collapse state is keyed on. */
+  key: string;
+  year: number;
+  grade: number;
+  lessons: Lesson[];
+};
 
-export function groupByGrade(lessons: Lesson[]): GradeGroup[] {
-  const groups = new Map<number, Lesson[]>();
+/**
+ * One group per year AND grade, ordered Year 1 first.
+ *
+ * Grouping on grade alone put Year 1 Grade 7 and Year 2 Grade 7 in the same
+ * bucket - two different courses under one heading, with duplicate lesson
+ * numbers. Splitting the key rather than adding a second level of nesting
+ * keeps the list one deep: the heading carries both facts and nothing new
+ * has to be opened.
+ */
+export function groupByTrack(lessons: Lesson[]): TrackGroup[] {
+  const groups = new Map<string, Lesson[]>();
   for (const l of lessons) {
-    const bucket = groups.get(l.grade) ?? [];
-    groups.set(l.grade, bucket);
+    const key = `${yearOf(l)}-${l.grade}`;
+    const bucket = groups.get(key) ?? [];
+    groups.set(key, bucket);
     bucket.push(l);
   }
   return Array.from(groups.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([grade, list]) => ({ grade, lessons: [...list].sort(byLessonNo) }));
+    .map(([key, list]) => {
+      const [year, grade] = key.split("-").map(Number);
+      return { key, year, grade, lessons: [...list].sort(byLessonNo) };
+    })
+    .sort((a, b) => a.year - b.year || a.grade - b.grade);
 }
 
 export function coverageOf(teacherId: string, selection: Lesson[]): Coverage {

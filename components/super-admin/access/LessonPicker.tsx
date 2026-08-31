@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 import {
   EMPTY_LESSON_FILTERS,
   filtersActive,
-  groupByGrade,
+  groupByTrack,
+  yearOf,
   type LessonFilters,
 } from "@/lib/super-admin/access";
 import type { Lesson } from "@/types";
@@ -67,27 +68,37 @@ export function LessonPicker({
   onToggleCollapse,
   onDeleteLesson,
   total,
+  allLessons,
 }: {
   lessons: Lesson[];
+  /** Everything, before filtering — the year tabs count against this so they
+      keep their numbers when a search narrows the list. */
+  allLessons: Lesson[];
   filters: LessonFilters;
   onFilters: (next: LessonFilters) => void;
   selected: Set<string>;
   onToggleLesson: (id: string, shiftKey: boolean, list: string[]) => void;
   onToggleMany: (ids: string[], next: boolean) => void;
-  collapsed: Set<number>;
-  onToggleCollapse: (grade: number) => void;
+  collapsed: Set<string>;
+  onToggleCollapse: (key: string) => void;
   onDeleteLesson: (lesson: Lesson) => void;
   total: number;
 }) {
-  const groups = groupByGrade(lessons);
+  const groups = groupByTrack(lessons);
   const shownIds = lessons.map((l) => l.id);
   const allGrades = Array.from(new Set(groups.map((g) => g.grade))).sort((a, b) => a - b);
   const active = filtersActive(filters);
 
-  // Grade chips come from everything, not just what survived the filter, so the
-  // rail doesn't rearrange itself under the pointer.
   const gradeCounts = new Map<number, number>();
-  for (const g of groups) gradeCounts.set(g.grade, g.lessons.length);
+  for (const g of groups) gradeCounts.set(g.grade, (gradeCounts.get(g.grade) ?? 0) + g.lessons.length);
+
+  // Year 1 and Year 2 are different curricula, so this is the first cut, above
+  // grade. Counts come from the unfiltered list: a tab that reads "0" while
+  // you have a search running would look like the year is empty rather than
+  // like the search is.
+  const yearCounts = new Map<number, number>();
+  for (const l of allLessons) yearCounts.set(yearOf(l), (yearCounts.get(yearOf(l)) ?? 0) + 1);
+  const years = Array.from(yearCounts.keys()).sort((a, b) => a - b);
 
   return (
     <>
@@ -121,6 +132,42 @@ export function LessonPicker({
             </button>
           )}
         </div>
+
+        {/* Year first. The two curricula share grade numbers and share
+            nothing else, so mixing them puts two different "Grade 7 Lesson 1"
+            rows next to each other. */}
+        {years.length > 1 && (
+          <div className="flex gap-1 rounded-lg border border-slate-200 p-0.5">
+            <button
+              onClick={() => onFilters({ ...filters, year: "all", grade: "all" })}
+              className={cn(
+                "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                filters.year === "all"
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Both years
+            </button>
+            {years.map((y) => (
+              <button
+                key={y}
+                // Grade resets with the year: a grade chip from the other
+                // curriculum would leave the list empty for no visible reason.
+                onClick={() => onFilters({ ...filters, year: y, grade: "all" })}
+                className={cn(
+                  "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                  filters.year === y
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-slate-500 hover:text-slate-700"
+                )}
+              >
+                Year {y}
+                <span className="ml-1 text-[10px] text-slate-400">{yearCounts.get(y)}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Grade rail — wraps instead of hiding grades behind a scrollbar. */}
         <div className="flex flex-wrap gap-1.5">
@@ -205,25 +252,27 @@ export function LessonPicker({
               No lessons match your filters.
             </p>
           )}
-          {groups.map(({ grade, lessons: groupLessons }) => {
-            const isCollapsed = collapsed.has(grade);
+          {groups.map(({ key, year, grade, lessons: groupLessons }) => {
+            const isCollapsed = collapsed.has(key);
             const ids = groupLessons.map((l) => l.id);
             return (
-              <div key={grade}>
+              <div key={key}>
                 <div className="sticky top-0 z-10 flex items-center gap-2 bg-white/95 py-1 backdrop-blur">
                   <TriBox
                     state={stateOf(ids, selected)}
-                    label={`Select every Grade ${grade} lesson`}
+                    label={`Select every Year ${year} Grade ${grade} lesson`}
                     onChange={(next) => onToggleMany(ids, next)}
                   />
                   <button
-                    onClick={() => onToggleCollapse(grade)}
+                    onClick={() => onToggleCollapse(key)}
                     className="flex flex-1 items-center gap-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
                   >
                     <ChevronRight
                       size={13}
                       className={cn("transition-transform", !isCollapsed && "rotate-90")}
                     />
+                    <span className="text-brand-700">Year {year}</span>
+                    <span className="text-slate-300">·</span>
                     Grade {grade}
                     <span className="text-slate-400">({groupLessons.length})</span>
                   </button>
@@ -260,7 +309,7 @@ export function LessonPicker({
                               {l.title}
                             </span>
                             <span className="block text-xs text-slate-500">
-                              Grade {l.grade}
+                              Year {yearOf(l)} · Grade {l.grade}
                               {l.language ? ` · ${l.language.toUpperCase()}` : ""} ·{" "}
                               {l.assignedTeacherIds.length} teacher
                               {l.assignedTeacherIds.length === 1 ? "" : "s"}
