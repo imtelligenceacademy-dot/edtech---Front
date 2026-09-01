@@ -2,6 +2,7 @@
 
 import type {
   AccessRequest,
+  AITeacherUsageReport,
   ChatThread,
   FairProject,
   Lesson,
@@ -353,6 +354,12 @@ export function clearChatMessages(lessonId: string) {
   return apiFetch<void>(`/api/chat/messages?lessonId=${encodeURIComponent(lessonId)}`, {
     method: "DELETE",
   });
+}
+
+// Every teacher's assistant usage, with the window boundaries the counts were
+// taken from. Super-admin only — the API refuses every other role.
+export function getTeacherAiUsage() {
+  return apiFetch<AITeacherUsageReport>("/api/ai/usage/teachers");
 }
 
 export function listChatThreads(teacherId?: string) {

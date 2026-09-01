@@ -255,3 +255,61 @@ export interface Session {
   ictFairAccess?: boolean;
   accessToken?: string;
 }
+
+// --- AI usage tracking (super-admin) --------------------------------------- #
+// Counts only. There is deliberately no score, band or rating in here: the
+// screen reports how many questions a teacher asked and when, and leaves the
+// judgement to the person reading it.
+
+/** One calendar day in the report's timezone, and what was asked that day. */
+export interface AIUsageDay {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface AITeacherUsage {
+  teacherId: string;
+  name: string;
+  email: string;
+  status: UserStatus;
+  schoolId?: string | null;
+  schoolName?: string | null;
+  grades: string[];
+
+  total: number; // all time
+  today: number; // since midnight in the report timezone
+  lastHour: number; // rolling 60 minutes — the hourly quota's own window
+  last24h: number; // rolling 24 hours — the daily quota's own window
+  last7: number;
+  prev7: number; // the 7 days before that, for a like-for-like comparison
+  last30: number;
+  activeDays30: number; // days with at least one question, of the last 30
+
+  firstUsedAt?: string | null;
+  lastUsedAt?: string | null;
+
+  hourlyUsed: number;
+  dailyUsed: number;
+
+  daily: AIUsageDay[];
+}
+
+/** Per-teacher usage plus the exact boundaries every count was taken from, so
+ *  the screen can name each window instead of saying "recently". */
+export interface AITeacherUsageReport {
+  generatedAt: string;
+  timezone: string; // IANA name the day buckets were cut in
+
+  todayStart: string;
+  hourStart: string;
+  dayStart: string;
+  weekStart: string;
+  prevWeekStart: string;
+  windowStart: string;
+  dailyDays: number;
+
+  hourlyLimit: number; // 0 means no limit is enforced
+  dailyLimit: number;
+
+  teachers: AITeacherUsage[];
+}
