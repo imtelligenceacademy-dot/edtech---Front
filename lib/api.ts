@@ -5,6 +5,7 @@ import type {
   AITeacherUsageReport,
   ChatThread,
   FairProject,
+  FairSection,
   Lesson,
   ProgressEntry,
   Report,
@@ -954,16 +955,65 @@ export function deleteUploadedFile(fileId: string) {
 }
 
 // --- ICT Fair projects ----------------------------------------------------- #
-export function listFairProjects() {
-  return apiFetch<FairProject[]>("/api/fair");
+// Sections, with their projects nested. A super-admin passes a schoolId to work
+// on one school; for everyone else the server scopes to their own regardless.
+export function listFairSections(schoolId?: string) {
+  const query = schoolId ? `?schoolId=${encodeURIComponent(schoolId)}` : "";
+  return apiFetch<FairSection[]>(`/api/fair/sections${query}`);
+}
+
+export function createFairSection(payload: {
+  schoolId: string;
+  title: string;
+  blurb?: string | null;
+  grades: string[];
+}) {
+  return apiFetch<FairSection>("/api/fair/sections", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateFairSection(
+  sectionId: string,
+  payload: { title?: string; blurb?: string | null; grades?: string[] }
+) {
+  return apiFetch<FairSection>(`/api/fair/sections/${sectionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Refused with a 409 while the section still holds projects. */
+export function deleteFairSection(sectionId: string) {
+  return apiFetch<void>(`/api/fair/sections/${sectionId}`, { method: "DELETE" });
+}
+
+/** Projects with no section — uploaded before sections existed, or moved out. */
+export function listUnfiledFairProjects() {
+  return apiFetch<FairProject[]>("/api/fair/unfiled");
+}
+
+/** Rename a project, or move it between sections. Passing `sectionId: null`
+ *  takes it out of its section; omitting the field leaves it where it is. */
+export function updateFairProject(
+  projectId: string,
+  payload: { title?: string; sectionId?: string | null }
+) {
+  return apiFetch<FairProject>(`/api/fair/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function uploadFairProject(
   file: File,
+  sectionId?: string | null,
   retried = false
 ): Promise<FairProject> {
   const form = new FormData();
   form.append("file", file);
+  if (sectionId) form.append("section_id", sectionId);
   const response = await fetch(`${API_BASE_URL}/api/fair`, {
     method: "POST",
     credentials: "include",
@@ -971,7 +1021,7 @@ export async function uploadFairProject(
     body: form,
   });
   if (response.status === 401 && !retried) {
-    if (await refreshAccessToken()) return uploadFairProject(file, true);
+    if (await refreshAccessToken()) return uploadFairProject(file, sectionId, true);
   }
   return parseResponse<FairProject>(response);
 }

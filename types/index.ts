@@ -42,6 +42,22 @@ export interface FairProject {
   id: string;
   title: string;
   fileId?: string | null;
+  /** The section this project is filed under. Null means unfiled — it belongs
+   *  to no school yet, so no teacher can see it. */
+  sectionId?: string | null;
+  createdAt?: string;
+}
+
+/** A named group of ICT Fair projects, for one school and one or more grades.
+ *  Schools each run their own fair, so the section is what carries the school. */
+export interface FairSection {
+  id: string;
+  schoolId: string;
+  schoolName?: string | null;
+  title: string;
+  blurb?: string | null;
+  grades: string[];
+  projects: FairProject[];
   createdAt?: string;
 }
 
@@ -253,6 +269,8 @@ export interface Session {
   name: string;
   email: string;
   ictFairAccess?: boolean;
+  /** Grades this teacher takes, e.g. ["G7","G8"]. Empty for admins. */
+  grades?: string[];
   accessToken?: string;
 }
 

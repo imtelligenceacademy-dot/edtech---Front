@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  listFairProjects,
+  listFairSections,
   listLessons,
   listMyAccessRequests,
   listProgress,
   requestLessonAccess,
 } from "@/lib/api";
-import type { FairProject, Lesson, ProgressEntry, Session } from "@/types";
+import type { FairSection, Lesson, ProgressEntry, Session } from "@/types";
 
 /**
  * Everything the teacher surface knows about a teacher's own lessons: what they
@@ -29,7 +29,9 @@ export function useTeacherLessons(session: Session | null) {
   const [requestedLessonIds, setRequestedLessonIds] = useState<Set<string>>(
     () => new Set()
   );
-  const [fairProjects, setFairProjects] = useState<FairProject[]>([]);
+  // Sections, with their projects nested. The server scopes them to the
+  // teacher's own school — schools do not share fair projects.
+  const [fairSections, setFairSections] = useState<FairSection[]>([]);
 
   useEffect(() => {
     listLessons()
@@ -49,7 +51,7 @@ export function useTeacherLessons(session: Session | null) {
   // Only once we know the teacher has been granted ICT Fair access.
   useEffect(() => {
     if (!session?.ictFairAccess) return;
-    listFairProjects().then(setFairProjects).catch(() => setFairProjects([]));
+    listFairSections().then(setFairSections).catch(() => setFairSections([]));
   }, [session?.ictFairAccess]);
 
   function refreshProgress() {
@@ -92,7 +94,7 @@ export function useTeacherLessons(session: Session | null) {
     lessonsLoaded,
     progressByLesson,
     requestedLessonIds,
-    fairProjects,
+    fairSections,
     refreshLessons,
     requestAccess,
   };

@@ -17,7 +17,6 @@ import { cn, stripMarkdown } from "@/lib/utils";
 import {
   getSession,
   logout,
-  listFairProjects,
   clearChatMessages,
   listChatMessages,
   listMyAccessRequests,
@@ -122,7 +121,7 @@ export function Chatbot({
     lessonsLoaded,
     progressByLesson,
     requestedLessonIds,
-    fairProjects,
+    fairSections,
     refreshLessons,
     requestAccess,
   } = useTeacherLessons(session);
@@ -599,9 +598,9 @@ export function Chatbot({
         >
           {showFairProjects ? (
             <FairProjectsScreen
-              projects={fairProjects}
+              sections={fairSections}
+              teacherGrades={session?.grades ?? []}
               onOpen={openFairProject}
-              light={light}
             />
           ) : selectedGrade === null ? (
             <GradeGate

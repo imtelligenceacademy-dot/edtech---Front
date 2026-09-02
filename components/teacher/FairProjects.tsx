@@ -1,78 +1,48 @@
 "use client";
 
-import { useEffect } from "react";
-import { Minimize2, Presentation, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Minimize2, Presentation } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
-import type { FairProject } from "@/types";
+import { FairSectionList } from "@/components/teacher/fair/FairSectionList";
+import type { FairProject, FairSection } from "@/types";
 
 export function FairProjectsScreen({
-  projects,
+  sections,
+  teacherGrades,
   onOpen,
-  light,
 }: {
-  projects: FairProject[];
+  sections: FairSection[];
+  teacherGrades: string[];
   onOpen: (project: FairProject) => void;
-  light: boolean;
 }) {
-  return (
-    <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center py-6 text-center sm:py-10">
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand to-brand-800 shadow-xl shadow-brand/40">
-        <Presentation size={28} className="text-white" />
-      </div>
-      <h1
-        className={cn(
-          "bg-clip-text text-3xl font-semibold text-transparent sm:text-4xl",
-          light
-            ? "bg-gradient-to-r from-slate-900 via-slate-700 to-slate-500"
-            : "bg-gradient-to-r from-white via-slate-200 to-slate-400"
-        )}
-      >
-        ICT Fair projects
-      </h1>
-      <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
-        Open a shared ICT Fair project to present it in the protected viewer.
-      </p>
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<"mine" | "all">("all");
+  // Whether the teacher has picked a scope themselves. Without this the effect
+  // below would keep dragging them back to "My grades" every time it ran.
+  const [chosen, setChosen] = useState(false);
 
-      {projects.length === 0 ? (
-        <p className={cn("mt-8 text-sm", light ? "text-slate-500" : "text-slate-400")}>
-          No ICT Fair projects shared yet.
-        </p>
-      ) : (
-        <div className="mt-8 grid w-full grid-cols-1 gap-2 text-left sm:grid-cols-2">
-          {projects.map((project) => (
-            <button
-              key={project.id}
-              onClick={() => project.fileId && onOpen(project)}
-              disabled={!project.fileId}
-              className={cn(
-                "group flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition",
-                project.fileId
-                  ? "border-slate-200 bg-white/70 hover:border-brand/40 hover:bg-white"
-                  : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-                  project.fileId
-                    ? "bg-slate-100 text-brand-600 group-hover:bg-brand/20"
-                    : "bg-slate-100 text-slate-400"
-                )}
-              >
-                <Presentation size={14} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{project.title}</span>
-                <span className="text-[11px] text-slate-400">
-                  {project.fileId ? "PDF project" : "Missing file"}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+  // Teachers land on their own grades, because that is what they came for.
+  // It cannot be the initial state: the session arrives a moment after the
+  // first render, so `teacherGrades` is still empty when useState runs and the
+  // screen would open on "All grades" for everybody.
+  useEffect(() => {
+    if (!chosen && teacherGrades.length > 0) setScope("mine");
+  }, [chosen, teacherGrades]);
+
+  return (
+    <FairSectionList
+      sections={sections}
+      query={query}
+      onQuery={setQuery}
+      scope={scope}
+      onScope={(next) => {
+        setChosen(true);
+        setScope(next);
+      }}
+      teacherGrades={teacherGrades}
+      onOpen={onOpen}
+    />
   );
 }
 
