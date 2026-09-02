@@ -2,6 +2,8 @@
 
 import { ArrowUp, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AiQuotaNote } from "@/components/teacher/AiQuotaNote";
+import type { AIQuota } from "@/types";
 
 /**
  * Where the teacher types. The send button becomes a stop button while a reply
@@ -16,6 +18,7 @@ export function ChatComposer({
   busy,
   inputRef,
   light,
+  quota,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -25,6 +28,9 @@ export function ChatComposer({
   busy: boolean;
   inputRef: React.RefObject<HTMLTextAreaElement>;
   light: boolean;
+  /** The teacher's remaining allowance, shown before it runs out rather than
+   *  announced by a refusal once it has. Null while unknown or unlimited. */
+  quota?: AIQuota | null;
 }) {
   return (
     <div
@@ -108,6 +114,9 @@ export function ChatComposer({
           </kbd>{" "}
           for newline · saved to this lesson so you can come back to it, visible
           only to you and the platform owner
+        </p>
+        <p className="mt-1 text-center text-[11px]">
+          <AiQuotaNote quota={quota} />
         </p>
       </div>
     </div>

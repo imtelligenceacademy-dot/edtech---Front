@@ -2,6 +2,7 @@
 
 import type {
   AccessRequest,
+  AIQuota,
   AITeacherUsageReport,
   ChatThread,
   FairProject,
@@ -355,6 +356,12 @@ export function clearChatMessages(lessonId: string) {
   return apiFetch<void>(`/api/chat/messages?lessonId=${encodeURIComponent(lessonId)}`, {
     method: "DELETE",
   });
+}
+
+/** The caller's own remaining AI allowance. Any signed-in role may ask; the
+ *  server scopes it to them and there is no way to ask about anyone else. */
+export function getMyAiQuota() {
+  return apiFetch<AIQuota>("/api/ai/quota");
 }
 
 // Every teacher's assistant usage, with the window boundaries the counts were

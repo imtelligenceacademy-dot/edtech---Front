@@ -262,6 +262,21 @@ export interface AIMessage {
   lessonId?: string | null;
 }
 
+/** What the signed-in user has left of their AI allowance.
+ *  `remaining` is null when no limit is configured; `resetsAt` is null until a
+ *  window is actually full, since below the limit there is nothing to wait for. */
+export interface AIQuota {
+  kind: "teacher" | "admin";
+  hourlyLimit: number;
+  hourlyUsed: number;
+  hourlyRemaining?: number | null;
+  hourlyResetsAt?: string | null;
+  dailyLimit: number;
+  dailyUsed: number;
+  dailyRemaining?: number | null;
+  dailyResetsAt?: string | null;
+}
+
 export interface Session {
   userId: string;
   role: Role;

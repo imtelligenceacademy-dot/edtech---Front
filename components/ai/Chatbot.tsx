@@ -41,6 +41,7 @@ import { useLessonSplit } from "@/components/teacher/hooks/useLessonSplit";
 import { useTeacherLessons } from "@/components/teacher/hooks/useTeacherLessons";
 import { useChatThread } from "@/components/teacher/hooks/useChatThread";
 import { useAiAnswer } from "@/components/teacher/hooks/useAiAnswer";
+import { useAiQuota } from "@/components/teacher/AiQuotaNote";
 import { usePresenter } from "@/components/teacher/hooks/usePresenter";
 import {
   gradePath,
@@ -197,6 +198,11 @@ export function Chatbot({
     stop: stopStreaming,
     retryLast,
   } = useAiAnswer({ visibleMessages, setMessages, pushAssistant });
+
+  // Re-read the allowance once a reply finishes, so the count under the
+  // composer reflects the question that was just spent rather than lagging it.
+  const answering = thinking || streaming;
+  const quota = useAiQuota(answering);
 
   // What a question is asked about: the lesson in play and the page on screen.
   const askContext = { lessonId: contextLessonId, currentSlide: viewedSlide };
@@ -695,6 +701,7 @@ export function Chatbot({
             onSend={() => send()}
             onStop={stopStreaming}
             busy={thinking || streaming}
+          quota={quota}
             inputRef={inputRef}
             light={light}
           />
