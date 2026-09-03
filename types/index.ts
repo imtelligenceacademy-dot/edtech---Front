@@ -277,6 +277,28 @@ export interface AIQuota {
   dailyResetsAt?: string | null;
 }
 
+/** One backup sitting in object storage. */
+export interface StoredBackup {
+  key: string;
+  sizeBytes: number;
+  storedAt: string;
+}
+
+/** Whether off-box backups are configured, and what is actually stored.
+ *  The listing is the evidence — "enabled" is only a claim about config. */
+export interface StorageStatus {
+  enabled: boolean;
+  bucket?: string | null;
+  endpoint?: string | null;
+  prefix?: string | null;
+  databaseIntervalHours: number;
+  filesIntervalHours: number;
+  keep: number;
+  databaseBackups: StoredBackup[];
+  fileBackups: StoredBackup[];
+  error?: string | null;
+}
+
 export interface Session {
   userId: string;
   role: Role;
