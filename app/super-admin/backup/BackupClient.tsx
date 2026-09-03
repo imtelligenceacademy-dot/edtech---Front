@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { OffBoxBackups } from "@/components/super-admin/backup/OffBoxBackups";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -140,7 +139,7 @@ export function BackupClient() {
     <>
       <PageHeader
         title="Database backup"
-        subtitle="Download or email a backup, and check the off-site copies are still being made."
+        subtitle="Download the full database, or email a backup to trusted recipients."
       />
 
       {/* Security caution */}
@@ -283,8 +282,6 @@ export function BackupClient() {
           <Badge tone={result.tone === "ok" ? "success" : "danger"}>{result.text}</Badge>
         </div>
       )}
-
-      <OffBoxBackups />
 
       {/* Danger zone */}
       <Card className="mt-6 border-red-200">

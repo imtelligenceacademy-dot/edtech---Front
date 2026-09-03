@@ -2,7 +2,6 @@
 
 import type {
   AccessRequest,
-  StorageStatus,
   AIQuota,
   AITeacherUsageReport,
   ChatThread,
@@ -190,19 +189,6 @@ export function emailDatabase(recipients: string[], note?: string) {
     method: "POST",
     body: JSON.stringify({ recipients, note }),
   });
-}
-
-/** What is actually stored off-box, and whether it is configured at all. */
-export function getStorageStatus() {
-  return apiFetch<StorageStatus>("/api/admin/db/storage");
-}
-
-/** Run an off-box backup now rather than waiting for the schedule. */
-export function runStorageBackup(includeFiles = true) {
-  return apiFetch<{ message: string }>(
-    `/api/admin/db/storage/run?includeFiles=${includeFiles}`,
-    { method: "POST" }
-  );
 }
 
 export function wipeDatabase() {
