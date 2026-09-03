@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
+  BellRing,
   CheckCircle2,
   Presentation,
   Lock,
@@ -833,13 +834,15 @@ export function Chatbot({
                 {[...gradeLessons].sort(byLessonNo).map((l) => {
                   const status = l.accessStatus ?? "available";
                   const isOpen = panelLesson?.id === l.id;
+                  // A lesson that is merely not open yet can be asked for. A
+                  // finished one cannot, because there is nothing to ask for.
+                  const canRequest = status === "locked" || status === "waiting";
+                  const requested = requestedLessonIds.has(l.id);
                   return (
-                    <button
+                    <div
                       key={l.id}
-                      onClick={() => openLesson(l)}
-                      title={l.title}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[11px] transition",
+                        "rounded-lg border px-2.5 py-1.5 text-[11px] transition",
                         isOpen
                           ? "border-brand/40 bg-brand-50/60"
                           : light
@@ -847,25 +850,59 @@ export function Chatbot({
                           : "border-transparent hover:border-white/10 hover:bg-white/5"
                       )}
                     >
-                      {status === "completed" ? (
-                        <CheckCircle2 size={12} className="shrink-0 text-emerald-500" />
-                      ) : status === "waiting" ? (
-                        <Clock size={12} className="shrink-0 text-amber-500" />
-                      ) : status === "locked" ? (
-                        <Lock size={12} className="shrink-0 text-slate-400" />
-                      ) : (
-                        <Presentation size={12} className="shrink-0 text-brand-600" />
-                      )}
-                      <span
-                        className={cn(
-                          "min-w-0 flex-1 truncate",
-                          light ? "text-slate-700" : "text-slate-200",
-                          status !== "available" && "opacity-70"
-                        )}
+                      <button
+                        onClick={() => openLesson(l)}
+                        title={l.title}
+                        className="flex w-full items-center gap-2 text-left"
                       >
-                        {l.title}
-                      </span>
-                    </button>
+                        {status === "completed" ? (
+                          <CheckCircle2 size={12} className="shrink-0 text-emerald-500" />
+                        ) : status === "waiting" ? (
+                          <Clock size={12} className="shrink-0 text-amber-500" />
+                        ) : status === "locked" ? (
+                          <Lock size={12} className="shrink-0 text-slate-400" />
+                        ) : (
+                          <Presentation size={12} className="shrink-0 text-brand-600" />
+                        )}
+                        <span
+                          className={cn(
+                            "min-w-0 flex-1 truncate",
+                            light ? "text-slate-700" : "text-slate-200",
+                            status !== "available" && "opacity-70"
+                          )}
+                        >
+                          {l.title}
+                        </span>
+                      </button>
+
+                      {/* Asking sits under the title rather than beside it. The
+                          rail is narrow and the titles already truncate, so a
+                          second line costs less than a squeezed one — and it
+                          reads as a sentence about this lesson rather than as
+                          an icon needing to be guessed at. */}
+                      {canRequest && (
+                        <p className="mt-0.5 flex items-center gap-1 pl-5 text-[11px] text-slate-500">
+                          <span>
+                            {status === "waiting"
+                              ? `Unlocks ${formatUnlockDate(l.availableAt)}`
+                              : "Locked"}
+                          </span>
+                          <span aria-hidden>·</span>
+                          {requested ? (
+                            <span className="flex items-center gap-0.5 font-medium text-emerald-700">
+                              <CheckCircle2 size={11} /> Requested
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => requestAccess(l, pushAssistant)}
+                              className="flex items-center gap-0.5 font-medium text-brand-700 underline underline-offset-2 transition hover:text-brand-800"
+                            >
+                              <BellRing size={11} /> Request access
+                            </button>
+                          )}
+                        </p>
+                      )}
+                    </div>
                   );
                 })}
               </div>
