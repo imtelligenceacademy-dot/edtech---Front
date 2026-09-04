@@ -315,6 +315,10 @@ export function updateUser(
     schoolId: string | null;
     grades: string[];
     sections: Record<string, string[]>;
+    // Renames applied before the new list takes effect, so a class keeps what
+    // was recorded under its old name. A list alone cannot say whether "A"
+    // became "Red" or was deleted and replaced.
+    sectionRenames: { grade: string; fromSection: string; toSection: string }[];
     language: "en" | "fr" | "both";
     ictFairAccess: boolean;
   }>

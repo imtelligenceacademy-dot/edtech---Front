@@ -20,18 +20,31 @@ const MAX_LABEL = 16;
  *
  * A grade left empty is the normal case and stays the default: one class, and
  * the teacher is never shown a class anywhere in the product.
+ *
+ * A class can be renamed by clicking its name. That is reported separately from
+ * the resulting list, because a list on its own cannot say whether "A" became
+ * "Red" or was deleted and replaced — and those mean opposite things for
+ * everything recorded in that room.
  */
 export function SectionSelector({
   grades,
   value,
   onChange,
+  onRename,
 }: {
   /** The grades currently assigned to this teacher. */
   grades: string[];
   value: Record<string, string[]>;
   onChange: (next: Record<string, string[]>) => void;
+  /** Told when a class is renamed rather than replaced. */
+  onRename?: (grade: string, from: string, to: string) => void;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // The class whose name is being edited, and the text so far.
+  const [editing, setEditing] = useState<{ grade: string; label: string } | null>(
+    null
+  );
+  const [editText, setEditText] = useState("");
 
   function labelsFor(code: string): string[] {
     return value[code] ?? [];
@@ -52,6 +65,32 @@ export function SectionSelector({
     // Case-insensitive: "a" and "A" are the same class, however it was typed.
     if (existing.some((l) => l.toLowerCase() === text.toLowerCase())) return;
     setLabels(code, [...existing, text]);
+  }
+
+  function startEditing(code: string, label: string) {
+    setEditing({ grade: code, label });
+    setEditText(label);
+  }
+
+  function commitEdit() {
+    if (!editing) return;
+    const { grade: code, label: from } = editing;
+    const to = editText.trim().slice(0, MAX_LABEL);
+    setEditing(null);
+    setEditText("");
+    if (!to || to === from) return;
+    // Renaming onto a class that already exists would merge two rooms, so it is
+    // refused here rather than half-applied on the server.
+    if (labelsFor(code).some((l) => l !== from && l.toLowerCase() === to.toLowerCase())) {
+      return;
+    }
+    // Replaced in place: the order classes are listed in decides which one a
+    // teacher's existing progress belongs to.
+    setLabels(
+      code,
+      labelsFor(code).map((l) => (l === from ? to : l))
+    );
+    onRename?.(code, from, to);
   }
 
   if (grades.length === 0) {
@@ -78,24 +117,63 @@ export function SectionSelector({
                 {option?.label ?? code}
               </span>
 
-              {labels.map((label) => (
-                <span
-                  key={label}
-                  className="inline-flex items-center gap-1 rounded-full border border-brand bg-brand-50 py-1 pl-2.5 pr-1 text-xs font-medium text-brand-700"
-                >
-                  {label}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLabels(code, labels.filter((l) => l !== label))
-                    }
-                    aria-label={`Remove class ${label}`}
-                    className="flex h-4 w-4 items-center justify-center rounded-full text-brand-700 transition hover:bg-brand hover:text-white"
+              {labels.map((label) => {
+                const isEditing =
+                  editing?.grade === code && editing?.label === label;
+                return (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-1 rounded-full border border-brand bg-brand-50 py-1 pl-2.5 pr-1 text-xs font-medium text-brand-700"
                   >
-                    <X size={11} />
-                  </button>
-                </span>
-              ))}
+                    {isEditing ? (
+                      <input
+                        autoFocus
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitEdit();
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setEditing(null);
+                            setEditText("");
+                          }
+                        }}
+                        onBlur={commitEdit}
+                        maxLength={MAX_LABEL}
+                        aria-label={`Rename class ${label}`}
+                        className="w-16 bg-transparent text-xs font-medium text-brand-700 focus:outline-none"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditing(code, label)}
+                        title="Rename this class"
+                        aria-label={`Rename class ${label}`}
+                        // Negative margins pull the padding back out again, so
+                        // the target covers the whole chip label without moving
+                        // anything: a single letter is otherwise about eight
+                        // pixels wide and easy to miss.
+                        className="-my-1 -mx-1 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-brand"
+                      >
+                        {label}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLabels(code, labels.filter((l) => l !== label))
+                      }
+                      aria-label={`Remove class ${label}`}
+                      className="flex h-4 w-4 items-center justify-center rounded-full text-brand-700 transition hover:bg-brand hover:text-white"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                );
+              })}
 
               <input
                 value={drafts[code] ?? ""}
@@ -140,6 +218,7 @@ export function SectionSelector({
                 : labels.length === 1
                 ? "One class. Add another only if this teacher takes this grade more than once."
                 : `${labels.length} classes, each with its own progress.`}
+              {labels.length > 0 && " Click a class to rename it."}
             </p>
           </div>
         );

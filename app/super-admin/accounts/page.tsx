@@ -68,6 +68,8 @@ function gradesSummary(grades?: string[]): string {
   return grades.map(gradeLabel).join(", ");
 }
 
+type SectionRename = { grade: string; fromSection: string; toSection: string };
+
 export default function AccountsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
@@ -80,6 +82,13 @@ export default function AccountsPage() {
   // null = closed, "new" = create, User = edit that user.
   const [editing, setEditing] = useState<User | "new" | null>(null);
   const [step, setStep] = useState<"details" | "grades">("details");
+  // Classes renamed in this edit, and what the account had when it opened.
+  // Kept apart from the draft because a rename is an instruction, not a value:
+  // the resulting list cannot say whether a class was renamed or replaced.
+  const [renames, setRenames] = useState<SectionRename[]>([]);
+  const [originalSections, setOriginalSections] = useState<Record<string, string[]>>(
+    {}
+  );
   const [draft, setDraft] = useState<Draft>(blankDraft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +114,8 @@ export default function AccountsPage() {
     setError(null);
     setStep("details");
     setDraft({ ...blankDraft, schoolId: schools[0]?.id ?? "" });
+    setRenames([]);
+    setOriginalSections({});
     setEditing("new");
   }
 
@@ -122,6 +133,8 @@ export default function AccountsPage() {
       language: (u.language ?? "en") as Lang,
       ictFairAccess: u.ictFairAccess ?? false,
     });
+    setRenames([]);
+    setOriginalSections(u.sections ?? {});
     setEditing(u);
   }
 
@@ -136,10 +149,38 @@ export default function AccountsPage() {
         Object.entries(v.sections).filter(([code]) => grades.includes(code))
       ),
     }));
+    setRenames((prev) => prev.filter((r) => grades.includes(r.grade)));
+  }
+
+  // Record that a class was renamed rather than replaced.
+  //
+  // Renaming the same class twice in one sitting (A → Red → Blue) is still one
+  // rename as far as the server is concerned: A → Blue. Sending both steps
+  // would have the second fail, because by then there is no class called Red.
+  function recordRename(grade: string, from: string, to: string) {
+    setRenames((prev) => {
+      const chained = prev.find((r) => r.grade === grade && r.toSection === from);
+      if (chained) {
+        return prev.map((r) => (r === chained ? { ...r, toSection: to } : r));
+      }
+      return [...prev, { grade, fromSection: from, toSection: to }];
+    });
+  }
+
+  // Only renames the server can act on: the old name has to be one it already
+  // knows about (renaming a class added in this same sitting is not a rename,
+  // it has no history yet), and the new one has to have survived the edit.
+  function pendingRenames(): SectionRename[] {
+    return renames.filter(
+      (r) =>
+        (originalSections[r.grade] ?? []).includes(r.fromSection) &&
+        (draft.sections[r.grade] ?? []).includes(r.toSection)
+    );
   }
 
   function closeModal() {
     setEditing(null);
+    setRenames([]);
     setStep("details");
     setShowPassword(false);
   }
@@ -172,6 +213,7 @@ export default function AccountsPage() {
           schoolId,
           grades: isTeacher ? draft.grades : [],
           sections: isTeacher ? draft.sections : {},
+          sectionRenames: isTeacher ? pendingRenames() : [],
           language: isTeacher ? draft.language : undefined,
           ictFairAccess: isTeacher ? draft.ictFairAccess : false,
         });
@@ -662,6 +704,7 @@ export default function AccountsPage() {
                       grades={draft.grades}
                       value={draft.sections}
                       onChange={(sections) => setDraft((v) => ({ ...v, sections }))}
+                      onRename={recordRename}
                     />
                   </div>
                 </div>
