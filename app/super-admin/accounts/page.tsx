@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
 import { GradeSelector } from "@/components/ui/GradeSelector";
+import { SectionSelector } from "@/components/ui/SectionSelector";
 import {
   createUser as createUserApi,
   deleteUser as deleteUserApi,
@@ -38,6 +39,7 @@ type Draft = {
   role: User["role"];
   schoolId: string;
   grades: string[];
+  sections: Record<string, string[]>;
   language: Lang;
   ictFairAccess: boolean;
 };
@@ -49,6 +51,7 @@ const blankDraft: Draft = {
   role: "teacher",
   schoolId: "",
   grades: [],
+  sections: {},
   language: "en",
   ictFairAccess: false,
 };
@@ -115,10 +118,24 @@ export default function AccountsPage() {
       role: u.role,
       schoolId: u.schoolId ?? schools[0]?.id ?? "",
       grades: u.grades ?? [],
+      sections: u.sections ?? {},
       language: (u.language ?? "en") as Lang,
       ictFairAccess: u.ictFairAccess ?? false,
     });
     setEditing(u);
+  }
+
+  // Grades and classes move together: dropping a grade takes its classes with
+  // it, so the form shows what will actually be saved rather than holding
+  // classes for a grade this teacher no longer takes.
+  function setGrades(grades: string[]) {
+    setDraft((v) => ({
+      ...v,
+      grades,
+      sections: Object.fromEntries(
+        Object.entries(v.sections).filter(([code]) => grades.includes(code))
+      ),
+    }));
   }
 
   function closeModal() {
@@ -141,6 +158,7 @@ export default function AccountsPage() {
           role: draft.role,
           schoolId: schoolId ?? undefined,
           grades: isTeacher ? draft.grades : [],
+          sections: isTeacher ? draft.sections : {},
           language: isTeacher ? draft.language : undefined,
           ictFairAccess: isTeacher ? draft.ictFairAccess : false,
         });
@@ -153,6 +171,7 @@ export default function AccountsPage() {
           role: draft.role,
           schoolId,
           grades: isTeacher ? draft.grades : [],
+          sections: isTeacher ? draft.sections : {},
           language: isTeacher ? draft.language : undefined,
           ictFairAccess: isTeacher ? draft.ictFairAccess : false,
         });
@@ -473,10 +492,27 @@ export default function AccountsPage() {
                 </span>{" "}
                 teaches. They can teach a single grade, a range, or all of them.
               </p>
-              <GradeSelector
-                value={draft.grades}
-                onChange={(grades) => setDraft((v) => ({ ...v, grades }))}
-              />
+              <GradeSelector value={draft.grades} onChange={setGrades} />
+
+              {/* Classes are only worth naming when one teacher takes the same
+                  grade more than once. Left empty — the normal case — the grade
+                  has one class and no class is shown to the teacher at all. */}
+              <div className="border-t border-slate-200 pt-3">
+                <p className="mb-2 text-xs font-medium text-slate-700">
+                  Classes{" "}
+                  <span className="font-normal text-slate-500">(optional)</span>
+                </p>
+                <p className="mb-2.5 text-[11px] text-slate-500">
+                  Only if this teacher takes the same grade more than once. Each
+                  class then keeps its own progress and moves through the lessons
+                  at its own pace.
+                </p>
+                <SectionSelector
+                  grades={draft.grades}
+                  value={draft.sections}
+                  onChange={(sections) => setDraft((v) => ({ ...v, sections }))}
+                />
+              </div>
             </div>
           ) : (
             <>
@@ -605,12 +641,29 @@ export default function AccountsPage() {
 
               {/* When editing a teacher, grades are edited inline. */}
               {!isNew && isTeacher && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="mb-2 text-xs font-medium text-slate-700">Grades taught</p>
-                  <GradeSelector
-                    value={draft.grades}
-                    onChange={(grades) => setDraft((v) => ({ ...v, grades }))}
-                  />
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div>
+                    <p className="mb-2 text-xs font-medium text-slate-700">
+                      Grades taught
+                    </p>
+                    <GradeSelector value={draft.grades} onChange={setGrades} />
+                  </div>
+                  <div className="border-t border-slate-200 pt-3">
+                    <p className="mb-2 text-xs font-medium text-slate-700">
+                      Classes{" "}
+                      <span className="font-normal text-slate-500">(optional)</span>
+                    </p>
+                    <p className="mb-2.5 text-[11px] text-slate-500">
+                      Only if this teacher takes the same grade more than once.
+                      Naming the first class moves their existing progress onto
+                      it; the rest start fresh.
+                    </p>
+                    <SectionSelector
+                      grades={draft.grades}
+                      value={draft.sections}
+                      onChange={(sections) => setDraft((v) => ({ ...v, sections }))}
+                    />
+                  </div>
                 </div>
               )}
             </>

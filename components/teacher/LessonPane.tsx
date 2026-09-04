@@ -18,6 +18,7 @@ import type { Lesson } from "@/types";
 
 export function LessonPane({
   lesson,
+  section,
   width,
   chatCollapsed,
   onToggleChat,
@@ -32,6 +33,8 @@ export function LessonPane({
   light,
 }: {
   lesson: Lesson;
+  // The class being taught — what the viewer saves belongs to them.
+  section: string;
   width: number;
   chatCollapsed: boolean;
   onToggleChat: () => void;
@@ -161,6 +164,7 @@ export function LessonPane({
           <PdfCanvasViewer
             fileId={lesson.fileId as string}
             lessonId={lesson.id}
+            section={section}
             light={light}
             accessStatus={lesson.accessStatus}
             onExit={onClose}
@@ -289,10 +293,12 @@ export function LessonPane({
 // no chat, no slide controls. Esc closes it.
 export function FullscreenPdf({
   lesson,
+  section,
   onClose,
   onCompleted,
 }: {
   lesson: Lesson;
+  section: string;
   onClose: () => void;
   onCompleted?: () => void;
 }) {
@@ -330,6 +336,7 @@ export function FullscreenPdf({
         <PdfCanvasViewer
           fileId={lesson.fileId as string}
           lessonId={lesson.id}
+          section={section}
           light
           accessStatus={lesson.accessStatus}
           onExit={onClose}

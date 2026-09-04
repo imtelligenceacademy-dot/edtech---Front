@@ -92,7 +92,9 @@ export function AttentionPanel({
                     {req.teacherName}
                   </span>
                   <span className="block truncate text-[11px] text-slate-600">
-                    {req.lessonTitle} · asked {formatDate(req.createdAt)}
+                    {req.lessonTitle}
+                    {req.section ? ` · Class ${req.section}` : ""} · asked{" "}
+                    {formatDate(req.createdAt)}
                   </span>
                 </span>
                 <button

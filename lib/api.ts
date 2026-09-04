@@ -5,6 +5,7 @@ import type {
   AIQuota,
   AITeacherUsageReport,
   ChatThread,
+  ClassSummary,
   FairProject,
   FairSection,
   Lesson,
@@ -286,6 +287,9 @@ export function createUser(payload: {
   role: Role;
   schoolId?: string;
   grades?: string[];
+  // Named classes per grade, e.g. {"G6": ["A","B"]}. Omitted or empty means
+  // one unnamed class for that grade, which is the default.
+  sections?: Record<string, string[]>;
   language?: "en" | "fr" | "both";
   ictFairAccess?: boolean;
 }) {
@@ -310,6 +314,7 @@ export function updateUser(
     role: Role;
     schoolId: string | null;
     grades: string[];
+    sections: Record<string, string[]>;
     language: "en" | "fr" | "both";
     ictFairAccess: boolean;
   }>
@@ -331,15 +336,27 @@ export function resetUserPassword(userId: string, password: string) {
   });
 }
 
-export function listLessons() {
-  return apiFetch<Lesson[]>("/api/lessons");
+// `section` is the class being taught: lesson availability is per class, so a
+// teacher who finished lesson 4 with 6A still sees it open for 6B. Omitted for
+// teachers with one class per grade, which the server reads as their only one.
+export function listLessons(section?: string) {
+  const query = section ? `?section=${encodeURIComponent(section)}` : "";
+  return apiFetch<Lesson[]>(`/api/lessons${query}`);
+}
+
+// Where each of the teacher's classes has got to. Drives both pickers — the
+// grade gate and, for a teacher who takes a grade more than once, the class
+// gate behind it.
+export function listMyClasses() {
+  return apiFetch<ClassSummary[]>("/api/lessons/my-classes");
 }
 
 // One lesson. For a teacher the API refuses anything not assigned to them or
 // not currently available, so this doubles as the access check for the
 // second-screen presenter window.
-export function getLesson(lessonId: string) {
-  return apiFetch<Lesson>(`/api/lessons/${lessonId}`);
+export function getLesson(lessonId: string, section?: string) {
+  const query = section ? `?section=${encodeURIComponent(section)}` : "";
+  return apiFetch<Lesson>(`/api/lessons/${lessonId}${query}`);
 }
 
 // --- Teacher chat history (one thread per lesson) -------------------------- #
@@ -404,10 +421,14 @@ export function deleteLesson(lessonId: string) {
 }
 
 // --- Lesson access requests (teacher -> super-admin) ------------------------ #
-export function requestLessonAccess(lessonId: string, note?: string) {
+export function requestLessonAccess(
+  lessonId: string,
+  section?: string,
+  note?: string
+) {
   return apiFetch<AccessRequest>("/api/access-requests", {
     method: "POST",
-    body: JSON.stringify({ lessonId, note }),
+    body: JSON.stringify({ lessonId, section, note }),
   });
 }
 
@@ -436,14 +457,18 @@ export function getTeacherAccess(teacherId: string) {
   return apiFetch<TeacherAccess>(`/api/lessons/access/${teacherId}`);
 }
 
+// An override belongs to one class: unlocking a lesson for 6B must not reopen
+// it for 6A, which finished it last week. `section` is "" for a grade with a
+// single unnamed class.
 export function setLessonOverride(
   teacherId: string,
   lessonId: string,
-  unlocked: boolean
+  unlocked: boolean,
+  section: string = ""
 ) {
   return apiFetch<TeacherLessonAccessRow>(
     `/api/lessons/access/${teacherId}/${lessonId}`,
-    { method: "PATCH", body: JSON.stringify({ unlocked }) }
+    { method: "PATCH", body: JSON.stringify({ unlocked, section }) }
   );
 }
 
@@ -521,7 +546,7 @@ export function listProgress() {
 // Teacher self-reports the slide they stopped at, or marks the lesson complete.
 export function saveLessonProgress(
   lessonId: string,
-  payload: { slide?: number; total?: number; complete?: boolean }
+  payload: { slide?: number; total?: number; complete?: boolean; section?: string }
 ) {
   return apiFetch<ProgressEntry>(`/api/progress/${lessonId}`, {
     method: "POST",

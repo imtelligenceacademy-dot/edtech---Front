@@ -3,24 +3,22 @@
 import { useState } from "react";
 import { GraduationCap, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { byLessonNo, descriptivePart } from "@/lib/teacher/lesson-order";
-import { formatUnlockDate } from "@/lib/teacher/lesson-copy";
 import { lastTaughtGrade } from "@/lib/teacher/prefs";
-import type { Lesson, ProgressEntry } from "@/types";
+import { classStatusLine, PickCard } from "@/components/teacher/PickCard";
+import type { ClassSummary } from "@/types";
 
 // Required first step — the teacher must choose which grade they're teaching
 // before the assistant is usable. Lessons + answers are scoped to it.
 export function GradeGate({
   grades,
-  lessons,
-  progressByLesson,
+  classes,
   loading,
   onPick,
   light,
 }: {
   grades: number[];
-  lessons: Lesson[];
-  progressByLesson: Record<string, ProgressEntry>;
+  /** One row per class of each grade — one row for a grade taught once. */
+  classes: ClassSummary[];
   loading: boolean;
   onPick: (grade: number) => void;
   light: boolean;
@@ -69,8 +67,7 @@ export function GradeGate({
             <GradeCard
               key={g}
               grade={g}
-              lessons={lessons.filter((l) => l.grade === g)}
-              progressByLesson={progressByLesson}
+              classes={classes.filter((c) => c.grade === g)}
               lastTaught={g === lastGrade}
               onPick={onPick}
               light={light}
@@ -84,111 +81,47 @@ export function GradeGate({
 
 // One grade, with enough of its state to choose without guessing: how far
 // through the grade they are, and which lesson opens next.
-
-
-// One grade, with enough of its state to choose without guessing: how far
-// through the grade they are, and which lesson opens next.
 export function GradeCard({
   grade,
-  lessons,
-  progressByLesson,
+  classes,
   lastTaught,
   onPick,
   light,
 }: {
   grade: number;
-  lessons: Lesson[];
-  progressByLesson: Record<string, ProgressEntry>;
+  classes: ClassSummary[];
   lastTaught: boolean;
   onPick: (grade: number) => void;
   light: boolean;
 }) {
-  const ordered = [...lessons].sort(byLessonNo);
-  const done = ordered.filter((l) => l.accessStatus === "completed").length;
-  const next = ordered.find((l) => (l.accessStatus ?? "available") === "available");
-  const waiting = ordered.find((l) => l.accessStatus === "waiting");
-  const progress = next ? progressByLesson[next.id] : undefined;
-
-  // One line saying what happens if they pick this grade.
-  const status = next
-    ? progress?.lastSlide && progress.slideTotal
-      ? `Resume · slide ${progress.lastSlide} of ${progress.slideTotal}`
-      : `Next · ${descriptivePart(next.title) || next.title}`
-    : waiting
-    ? `Unlocks ${formatUnlockDate(waiting.availableAt)}`
-    : done === ordered.length && ordered.length > 0
-    ? "All lessons completed"
-    : "No lesson open yet";
+  // A grade taught more than once has no single "next lesson" — each class is
+  // at its own point — so the card totals the work across them and leaves the
+  // detail to the class picker behind it. For the ordinary grade, taught once,
+  // there is exactly one class here and the card reads as it always has.
+  const many = classes.length > 1;
+  const line = many
+    ? {
+        status: `${classes.length} classes — pick one`,
+        statusIsNext: false,
+        title: undefined,
+      }
+    : classes[0]
+    ? classStatusLine(classes[0])
+    : { status: "No lesson open yet", statusIsNext: false, title: undefined };
 
   return (
-    <button
-      onClick={() => onPick(grade)}
-      className={cn(
-        "group flex flex-col gap-2 rounded-2xl border px-5 py-4 text-left transition hover:border-brand/50",
-        lastTaught
-          ? "border-brand/40 bg-white shadow-lg shadow-brand/10"
-          : light
-          ? "border-slate-200 bg-white/70 hover:bg-white"
-          : "border-white/10 bg-white/5 hover:bg-white/10"
-      )}
-    >
-      <div className="flex items-baseline gap-2">
-        <span
-          className={cn(
-            "text-[11px] uppercase tracking-wider",
-            light ? "text-slate-400" : "text-slate-500"
-          )}
-        >
-          Grade
-        </span>
-        <span
-          className={cn(
-            "text-2xl font-semibold leading-none",
-            light ? "text-slate-900" : "text-white"
-          )}
-        >
-          {grade}
-        </span>
-        {lastTaught && (
-          <span className="ml-auto rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
-            Last taught
-          </span>
-        )}
-      </div>
-
-      <p
-        className={cn(
-          "truncate text-[11px]",
-          next ? "text-brand-700" : light ? "text-slate-500" : "text-slate-400"
-        )}
-        title={next ? next.title : status}
-      >
-        {status}
-      </p>
-
-      <div className="flex items-center gap-2">
-        <div
-          className={cn(
-            "h-1 flex-1 overflow-hidden rounded-full",
-            light ? "bg-slate-100" : "bg-white/10"
-          )}
-        >
-          <div
-            className="h-full bg-brand"
-            style={{
-              width: `${ordered.length ? (done / ordered.length) * 100 : 0}%`,
-            }}
-          />
-        </div>
-        <span
-          className={cn(
-            "shrink-0 text-[10px] tabular-nums",
-            light ? "text-slate-500" : "text-slate-400"
-          )}
-        >
-          {done}/{ordered.length} done
-        </span>
-      </div>
-    </button>
+    <PickCard
+      kindLabel="Grade"
+      value={String(grade)}
+      status={line.status}
+      statusIsNext={line.statusIsNext}
+      title={line.title}
+      done={classes.reduce((n, c) => n + c.completed, 0)}
+      total={classes.reduce((n, c) => n + c.total, 0)}
+      highlighted={lastTaught}
+      highlightLabel="Last taught"
+      onPick={() => onPick(grade)}
+      light={light}
+    />
   );
 }

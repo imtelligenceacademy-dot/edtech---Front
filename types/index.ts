@@ -12,6 +12,10 @@ export interface User {
   schoolId?: string;
   status: UserStatus;
   grades?: string[]; // teacher grade tokens, e.g. ["KG1","G1"]
+  // Named classes per grade, e.g. {"G6": ["A","B"]}. A grade that is absent,
+  // or maps to an empty list, has one unnamed class — the default, and the
+  // case in which no section is shown to the teacher anywhere.
+  sections?: Record<string, string[]>;
   language?: "en" | "fr" | "both" | null; // teacher language of instruction
   ictFairAccess?: boolean; // teacher can see the ICT Fair section
   createdAt: string;
@@ -97,11 +101,33 @@ export interface Lesson {
   accessMessage?: string | null;
 }
 
+/**
+ * One class of one grade, as the teacher's own pickers see it.
+ *
+ * A teacher who takes a grade once has a single row for it with an empty
+ * section, and is never shown a class anywhere. A teacher who takes it four
+ * times has four rows, each at its own point in the curriculum.
+ */
+export interface ClassSummary {
+  grade: number;
+  section: string;
+  total: number;
+  completed: number;
+  nextLessonId?: string | null;
+  nextTitle?: string | null;
+  nextStatus?: LessonAccessStatus | null;
+  availableAt?: string | null;
+  lastSlide?: number | null;
+  slideTotal?: number | null;
+}
+
 // Super-admin lesson-access management view.
 export interface TeacherLessonAccessRow {
   lessonId: string;
   title: string;
   grade: number;
+  /** The class this row is for. "" when the grade has one unnamed class. */
+  section: string;
   language?: "en" | "fr" | null;
   course?: string | null;
   lessonNo?: number | null;
@@ -114,6 +140,9 @@ export interface TeacherLessonAccessRow {
 
 export interface TeacherAccessTrack {
   grade: number;
+  /** Each class walks the curriculum alone, so a grade with named classes
+   *  contributes one track per class. */
+  section: string;
   language?: "en" | "fr" | null;
   year?: number | null;
   lessons: TeacherLessonAccessRow[];
@@ -125,6 +154,7 @@ export interface TeacherAccess {
   email: string;
   schoolId?: string | null;
   grades: string[];
+  sections: Record<string, string[]>;
   language?: "en" | "fr" | "both" | null;
   tracks: TeacherAccessTrack[];
 }
@@ -139,6 +169,8 @@ export interface AccessRequest {
   lessonId: string;
   lessonTitle: string;
   grade: number;
+  /** Which of the teacher's classes is blocked. "" when the grade has one. */
+  section: string;
   language?: "en" | "fr" | null;
   lessonNo?: number | null;
   status: AccessRequestStatus;
@@ -160,6 +192,8 @@ export interface ProgressEntry {
   id: string;
   teacherId: string;
   lessonId: string;
+  /** Which class this row tracks. "" when the grade has one unnamed class. */
+  section: string;
   status: LessonStatus;
   percentComplete: number;
   // Where the teacher actually stopped. Absent on rows last saved before
@@ -286,6 +320,8 @@ export interface Session {
   ictFairAccess?: boolean;
   /** Grades this teacher takes, e.g. ["G7","G8"]. Empty for admins. */
   grades?: string[];
+  /** Named classes per grade. A grade that is absent has one unnamed class. */
+  sections?: Record<string, string[]>;
   accessToken?: string;
 }
 

@@ -26,6 +26,8 @@ export type TeacherLesson = {
   lessonId: string;
   title: string;
   grade: number;
+  /** The class this row is for. "" when the grade has one unnamed class. */
+  section: string;
   lessonNo: number | null;
   course: string | null;
   state: LessonState;
@@ -85,29 +87,39 @@ export function buildProgress(
   progress: ProgressEntry[],
   schools: School[]
 ): TeacherProgress[] {
-  const byKey = new Map<string, ProgressEntry>();
-  for (const p of progress) byKey.set(`${p.teacherId}:${p.lessonId}`, p);
+  // A teacher who takes 6A, 6B and 6C has three rows for the same lesson, each
+  // at its own point. Keying by teacher and lesson alone would keep whichever
+  // arrived last and report one class's progress as the whole picture.
+  const byKey = new Map<string, ProgressEntry[]>();
+  for (const p of progress) {
+    const key = `${p.teacherId}:${p.lessonId}`;
+    const rows = byKey.get(key);
+    if (rows) rows.push(p);
+    else byKey.set(key, [p]);
+  }
   const schoolName = new Map(schools.map((s) => [s.id, s.name]));
 
   return users
     .filter((u) => u.role === "teacher")
     .map((teacher) => {
-      const mine = lessons
-        .filter((l) => l.assignedTeacherIds?.includes(teacher.id))
-        .sort(
-          (a, b) =>
-            (a.grade ?? 0) - (b.grade ?? 0) ||
-            (a.course ?? "").localeCompare(b.course ?? "") ||
-            (a.lessonNo ?? 0) - (b.lessonNo ?? 0)
-        );
+      const mine = lessons.filter((l) => l.assignedTeacherIds?.includes(teacher.id));
 
       let finished = 0;
       let inProgress = 0;
       let notStarted = 0;
       let lastOpenedAt: string | undefined;
 
-      const rows: TeacherLesson[] = mine.map((lesson) => {
-        const entry = byKey.get(`${teacher.id}:${lesson.id}`);
+      // One row per lesson per class, so the counts are lesson deliveries: a
+      // teacher taking four classes through ten lessons has forty of them, and
+      // that is the work actually done.
+      const rows: TeacherLesson[] = mine.flatMap((lesson) => {
+        const entries = byKey.get(`${teacher.id}:${lesson.id}`) ?? [];
+        // No row yet means nothing has been assigned-and-opened for any class;
+        // show the lesson once, unstarted, rather than not at all.
+        const perClass: (ProgressEntry | undefined)[] = entries.length
+          ? [...entries].sort((a, b) => a.section.localeCompare(b.section))
+          : [undefined];
+        return perClass.map((entry) => {
         const state = stateOf(entry);
         if (state === "finished") finished += 1;
         else if (state === "in-progress") inProgress += 1;
@@ -118,6 +130,7 @@ export function buildProgress(
           lessonId: lesson.id,
           title: lesson.title,
           grade: lesson.grade,
+          section: entry?.section ?? "",
           lessonNo: lesson.lessonNo ?? null,
           course: lesson.course ?? null,
           state,
@@ -130,7 +143,18 @@ export function buildProgress(
           slideTotal: entry?.slideTotal ?? (lesson.slides?.length || null),
           lastOpenedAt: entry?.lastOpenedAt,
         };
+        });
       });
+
+      // Ordered so each class's course reads as one run: grade, then class,
+      // then the curriculum order they teach it in.
+      rows.sort(
+        (a, b) =>
+          a.grade - b.grade ||
+          a.section.localeCompare(b.section) ||
+          (a.course ?? "").localeCompare(b.course ?? "") ||
+          (a.lessonNo ?? 0) - (b.lessonNo ?? 0)
+      );
 
       const assigned = rows.length;
       return {
@@ -190,7 +214,13 @@ export function courseLabel(course: string | null): string {
   return "";
 }
 
-export type Track = { grade: number; course: string | null; lessons: TeacherLesson[] };
+export type Track = {
+  grade: number;
+  /** "" when the grade has one unnamed class. */
+  section: string;
+  course: string | null;
+  lessons: TeacherLesson[];
+};
 
 /**
  * Consecutive lessons of the same grade AND course. Headings, not folders -
@@ -205,10 +235,22 @@ export function byTrack(lessons: TeacherLesson[]): Track[] {
   const out: Track[] = [];
   for (const lesson of lessons) {
     const last = out[out.length - 1];
-    if (last && last.grade === lesson.grade && last.course === lesson.course) {
+    // The class breaks a track as surely as the grade does: 6A's python course
+    // and 6B's are two runs through the same lessons, at different points.
+    if (
+      last &&
+      last.grade === lesson.grade &&
+      last.section === lesson.section &&
+      last.course === lesson.course
+    ) {
       last.lessons.push(lesson);
     } else {
-      out.push({ grade: lesson.grade, course: lesson.course, lessons: [lesson] });
+      out.push({
+        grade: lesson.grade,
+        section: lesson.section,
+        course: lesson.course,
+        lessons: [lesson],
+      });
     }
   }
   return out;

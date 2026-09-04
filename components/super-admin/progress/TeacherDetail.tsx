@@ -107,13 +107,14 @@ function CurrentlyOn({ teacher }: { teacher: TeacherProgress }) {
     <div className="space-y-2">
       {shown.map((lesson) => (
         <div
-          key={lesson.lessonId}
+          key={`${lesson.section}|${lesson.lessonId}`}
           className="flex items-start gap-3 rounded-lg border border-brand-100 bg-brand-50/60 px-3.5 py-2.5"
         >
           <BookOpen size={15} className="mt-0.5 shrink-0 text-brand-600" />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-slate-900">
               Grade {lesson.grade}
+              {lesson.section ? ` · Class ${lesson.section}` : ""}
               {lesson.lessonNo !== null ? ` · Lesson ${lesson.lessonNo}` : ""} —{" "}
               {lesson.title}
             </p>
@@ -242,11 +243,14 @@ export function TeacherDetail({
           </p>
         ) : (
           tracks.map((track) => (
-            <section key={track.lessons[0].lessonId}>
+            <section key={`${track.grade}|${track.section}|${track.course ?? ""}`}>
               {/* A heading, not a folder. Nothing collapses. */}
               <h3 className="flex items-center gap-2 bg-slate-50/80 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 sm:px-5">
                 <Circle size={6} className="fill-slate-300 text-slate-300" />
                 Grade {track.grade}
+                {track.section && (
+                  <span className="text-slate-400">· Class {track.section}</span>
+                )}
                 {courseLabel(track.course) && (
                   <span className="text-slate-400">· {courseLabel(track.course)}</span>
                 )}
@@ -257,7 +261,10 @@ export function TeacherDetail({
               </h3>
               <ul className="divide-y divide-slate-50">
                 {track.lessons.map((lesson) => (
-                  <LessonRow key={lesson.lessonId} lesson={lesson} />
+                  <LessonRow
+                    key={`${lesson.section}|${lesson.lessonId}`}
+                    lesson={lesson}
+                  />
                 ))}
               </ul>
             </section>

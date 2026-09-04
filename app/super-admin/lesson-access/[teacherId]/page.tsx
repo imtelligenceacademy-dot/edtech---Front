@@ -58,11 +58,17 @@ export default function TeacherLessonAccessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherId]);
 
-  async function toggle(lessonId: string, next: boolean) {
-    setBusy(lessonId);
+  // A lesson appears once per class, so "which row is busy" has to name the
+  // class too — otherwise granting access for 6B spins the button on 6A.
+  function rowKey(lessonId: string, section: string) {
+    return `${section}|${lessonId}`;
+  }
+
+  async function toggle(lessonId: string, next: boolean, section: string) {
+    setBusy(rowKey(lessonId, section));
     setError(null);
     try {
-      await setLessonOverride(teacherId, lessonId, next);
+      await setLessonOverride(teacherId, lessonId, next, section);
       // Re-fetch: unlocking one lesson can cascade to later lessons in the track.
       const fresh = await getTeacherAccess(teacherId);
       setData(fresh);
@@ -130,9 +136,13 @@ export default function TeacherLessonAccessPage() {
 
       <div className="space-y-6">
         {data.tracks.map((track) => (
-          <Card key={`${track.grade}-${track.language ?? ""}`}>
+          <Card key={`${track.grade}-${track.section}-${track.language ?? ""}`}>
             <CardHeader
-              title={`Grade ${track.grade}${track.language ? ` · ${track.language.toUpperCase()}` : ""}`}
+              title={
+                `Grade ${track.grade}` +
+                (track.section ? ` · Class ${track.section}` : "") +
+                (track.language ? ` · ${track.language.toUpperCase()}` : "")
+              }
               subtitle={`${track.lessons.length} lesson${track.lessons.length === 1 ? "" : "s"} in this track`}
             />
             <CardBody className="divide-y divide-slate-100 p-0">
@@ -165,17 +175,22 @@ export default function TeacherLessonAccessPage() {
                     {l.unlockedOverride ? (
                       <Button
                         variant="secondary"
-                        onClick={() => toggle(l.lessonId, false)}
-                        disabled={busy === l.lessonId}
+                        onClick={() => toggle(l.lessonId, false, track.section)}
+                        disabled={busy === rowKey(l.lessonId, track.section)}
                       >
-                        {busy === l.lessonId ? "…" : "Revoke access"}
+                        {busy === rowKey(l.lessonId, track.section)
+                          ? "…"
+                          : "Revoke access"}
                       </Button>
                     ) : (
                       <Button
-                        onClick={() => toggle(l.lessonId, true)}
-                        disabled={busy === l.lessonId || l.status === "available"}
+                        onClick={() => toggle(l.lessonId, true, track.section)}
+                        disabled={
+                          busy === rowKey(l.lessonId, track.section) ||
+                          l.status === "available"
+                        }
                       >
-                        {busy === l.lessonId
+                        {busy === rowKey(l.lessonId, track.section)
                           ? "…"
                           : l.status === "available"
                           ? "Open"

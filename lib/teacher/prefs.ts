@@ -12,6 +12,10 @@ export const PANE_WIDTH_KEY = "imt_lesson_pane_width";
 // The grade a teacher last taught. They come back to the same one for weeks,
 // so the gate points at it instead of asking them to remember.
 const LAST_GRADE_KEY = "imt_last_grade";
+// The class a teacher last taught, per grade. Same reasoning as the grade: a
+// teacher works through 6A on Mondays for weeks, and should not have to
+// remember which one they were on.
+const LAST_SECTION_KEY = "imt_last_section";
 
 export type SavedChat = {
   lastLessonId: string | null;
@@ -29,6 +33,23 @@ export function lastTaughtGrade(): number | null {
   try {
     const value = Number(window.localStorage.getItem(LAST_GRADE_KEY));
     return Number.isInteger(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberSection(grade: number, section: string) {
+  if (!section) return;
+  try {
+    window.localStorage.setItem(`${LAST_SECTION_KEY}_${grade}`, section);
+  } catch {
+    /* storage disabled — the gate just won't highlight anything */
+  }
+}
+
+export function lastTaughtSection(grade: number): string | null {
+  try {
+    return window.localStorage.getItem(`${LAST_SECTION_KEY}_${grade}`);
   } catch {
     return null;
   }

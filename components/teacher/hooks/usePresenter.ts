@@ -8,6 +8,10 @@ import type { Lesson } from "@/types";
 export type Presenting = { lesson: Lesson; page: number; total: number };
 
 type Callbacks = {
+  /** The class being taught. Carried to the projected window so its access
+   *  check asks about the right one: a lesson finished with 6A is still open
+   *  for 6B, and the projector must not refuse it. */
+  section: string;
   /** The page the class is looking at — what the assistant is asked about. */
   onPageChange: (page: number | null) => void;
   /** Said in the teacher's own conversation when the projection moves. */
@@ -45,7 +49,10 @@ export function usePresenter(callbacks: Callbacks) {
   // opened inside this click or the browser blocks it, so placement follows.
   function start(lesson: Lesson) {
     if (!lesson.fileId) return;
-    const url = `/teacher/present/${lesson.id}`;
+    const section = cbRef.current.section;
+    const url =
+      `/teacher/present/${lesson.id}` +
+      (section ? `?section=${encodeURIComponent(section)}` : "");
     const existing = winRef.current;
     const reusing = Boolean(existing && !existing.closed);
 

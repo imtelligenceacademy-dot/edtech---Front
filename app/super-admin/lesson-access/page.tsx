@@ -100,6 +100,9 @@ export default function LessonAccessIndexPage() {
                   </div>
                   <div className="text-xs text-slate-500">
                     Grade {r.grade}
+                    {/* Which class is stuck. Granting unlocks that one only,
+                        so the admin has to be able to see which it is. */}
+                    {r.section ? ` · Class ${r.section}` : ""}
                     {r.language ? ` · ${r.language.toUpperCase()}` : ""}
                     {r.lessonNo != null ? ` · Lesson ${r.lessonNo}` : ""}
                     {` · ${new Date(r.createdAt).toLocaleDateString()}`}

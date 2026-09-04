@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import { getLesson } from "@/lib/api";
@@ -17,6 +18,11 @@ export default function PresentLessonPage({
   params: { lessonId: string };
 }) {
   const { lessonId } = params;
+  // The class this is being taught to. Access is per class — a lesson finished
+  // with 6A is still open for 6B — so the projector has to ask about the same
+  // class the teacher's own window is on, or it would be refused a lesson they
+  // are in the middle of presenting.
+  const section = useSearchParams().get("section") ?? undefined;
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [error, setError] = useState<string | null>(null);
   // A page the teacher asked us to jump to (from their ‹ › controls).
@@ -30,12 +36,12 @@ export default function PresentLessonPage({
   // The API refuses a lesson this teacher can't open, so this is the access
   // check as well as the way we learn which file to render.
   useEffect(() => {
-    getLesson(lessonId)
+    getLesson(lessonId, section)
       .then(setLesson)
       .catch((err) =>
         setError(err instanceof Error ? err.message : "This lesson can't be opened.")
       );
-  }, [lessonId]);
+  }, [lessonId, section]);
 
   useEffect(() => {
     const channel = openPresentChannel(lessonId, (message) => {

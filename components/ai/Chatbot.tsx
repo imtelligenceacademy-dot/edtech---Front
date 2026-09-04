@@ -26,6 +26,7 @@ import {
   saveLessonProgress,
 } from "@/lib/api";
 import { GradeGate } from "@/components/teacher/GradeGate";
+import { ClassGate } from "@/components/teacher/ClassGate";
 import { WelcomeScreen } from "@/components/teacher/WelcomeScreen";
 import {
   FairButton,
@@ -46,6 +47,9 @@ import { useAiQuota } from "@/components/teacher/AiQuotaNote";
 import { usePresenter } from "@/components/teacher/hooks/usePresenter";
 import {
   gradePath,
+  parseSectionSegment,
+  sectionPath,
+  sectionsForGrade,
   TEACHER_FAIR,
   TEACHER_HOME,
 } from "@/lib/teacher-routes";
@@ -54,6 +58,7 @@ import {
   clearChatSession,
   lastTaughtGrade,
   rememberGrade,
+  rememberSection,
   type SavedChat,
 } from "@/lib/teacher/prefs";
 import {
@@ -82,9 +87,13 @@ import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/t
 // through the session the way a teacher expects.
 export function Chatbot({
   grade = null,
+  sectionSegment,
   fair = false,
 }: {
   grade?: number | null;
+  /** The class segment from the URL, for a teacher who takes this grade more
+   *  than once. Undefined means they have not picked one yet. */
+  sectionSegment?: string;
   fair?: boolean;
 } = {}) {
   const router = useRouter();
@@ -99,6 +108,10 @@ export function Chatbot({
   const [lastLesson, setLastLesson] = useState<Lesson | null>(null);
   const selectedGrade = grade;
   const [session, setSession] = useState<Session | null>(null);
+  // Whether the session has come back yet, not merely whether it is truthy.
+  // Which classes a teacher takes lives on it, and drawing before it lands
+  // would show the lessons for a moment and then replace them with a picker.
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   // The teacher experience is light-only.
   const light = true;
   const [fullscreenLesson, setFullscreenLesson] = useState<Lesson | null>(null);
@@ -117,16 +130,34 @@ export function Chatbot({
   const pendingLessonIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // The teacher's lessons, their progress in them, and their access requests.
+  // The classes this teacher takes for the grade in play. An empty list is the
+  // single unnamed class every teacher has by default, and the reason most of
+  // them never meet the idea of a class at all.
+  const gradeClasses =
+    selectedGrade === null ? [] : sectionsForGrade(session?.sections, selectedGrade);
+  // Only a teacher who takes this grade more than once has a choice to make.
+  const needsClassChoice = gradeClasses.length > 1;
+  const chosenSection = needsClassChoice
+    ? parseSectionSegment(sectionSegment, gradeClasses)
+    : "";
+  // Everything below is scoped to one class. While the picker is up there is
+  // no class yet, and the empty string means "their first" to the server —
+  // harmless, because nothing is written until they have chosen.
+  const section = chosenSection ?? "";
+  const showClassGate = sessionLoaded && needsClassChoice && chosenSection === null;
+
+  // The teacher's lessons, their progress in them, and their access requests —
+  // all for the class in front of them.
   const {
     lessons,
     lessonsLoaded,
     progressByLesson,
     requestedLessonIds,
+    classes,
     fairSections,
     refreshLessons,
     requestAccess,
-  } = useTeacherLessons(session);
+  } = useTeacherLessons(session, section);
 
   // How the lesson viewer and the assistant share the screen.
   const { paneWidth, setPaneWidth, chatCollapsed, setChatCollapsed, startPaneDrag } =
@@ -147,6 +178,7 @@ export function Chatbot({
     stopPresenting,
     goToPage,
   } = usePresenter({
+    section,
     onPageChange: setViewedSlide,
     say: (content, extras) => sayRef.current(content, extras),
     onStart: (lesson) => {
@@ -261,7 +293,10 @@ export function Chatbot({
   }, [lessons]);
 
   useEffect(() => {
-    getSession().then(setSession).catch(() => setSession(null));
+    getSession()
+      .then(setSession)
+      .catch(() => setSession(null))
+      .finally(() => setSessionLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -327,7 +362,7 @@ export function Chatbot({
     }
     const lesson = openedLesson;
     try {
-      await saveLessonProgress(lesson.id, { complete: true });
+      await saveLessonProgress(lesson.id, { complete: true, section });
       refreshLessons();
       pushAssistant(
         `Nice work — I've marked "${lesson.title}" as complete. Your next lesson unlocks after the waiting period; say "open the next lesson" and I'll open it once it's available.`,
@@ -437,6 +472,17 @@ export function Chatbot({
     router.push(gradePath(grade));
   }
 
+  // One class of the grade already in play. Its own route, so Back returns to
+  // the class picker rather than out of the grade — and so a teacher can
+  // bookmark the class they teach on Mondays.
+  function chooseClass(section: string) {
+    if (selectedGrade === null) return;
+    setOpenedLesson(null);
+    setLastLesson(null);
+    rememberSection(selectedGrade, section);
+    router.push(sectionPath(selectedGrade, section));
+  }
+
   // Enter ICT Fair mode: its own route, so Back returns to the grade.
   function openFairProjects() {
     setOpenedLesson(null);
@@ -524,6 +570,7 @@ export function Chatbot({
       {openedLesson && (
         <LessonPane
           lesson={openedLesson}
+          section={section}
           width={chatCollapsed ? 100 : paneWidth}
           chatCollapsed={chatCollapsed}
           onToggleChat={() => setChatCollapsed((v) => !v)}
@@ -565,6 +612,7 @@ export function Chatbot({
       {fullscreenLesson?.fileId && (
         <FullscreenPdf
           lesson={fullscreenLesson}
+          section={section}
           onClose={() => {
             setFullscreenLesson(null);
             refreshLessons();
@@ -612,10 +660,18 @@ export function Chatbot({
           ) : selectedGrade === null ? (
             <GradeGate
               grades={availableGrades}
-              lessons={lessons}
-              progressByLesson={progressByLesson}
+              classes={classes}
               loading={!lessonsLoaded}
               onPick={chooseGrade}
+              light={light}
+            />
+          ) : showClassGate ? (
+            <ClassGate
+              grade={selectedGrade}
+              classes={classes.filter((c) => c.grade === selectedGrade)}
+              loading={!lessonsLoaded}
+              onPick={chooseClass}
+              onBack={() => router.push(TEACHER_HOME)}
               light={light}
             />
           ) : isEmpty ? (
@@ -658,6 +714,7 @@ export function Chatbot({
         {presenting && (
           <PresentingBar
             lesson={presenting.lesson}
+            section={section}
             page={presenting.page}
             total={presenting.total}
             onPrev={() => goToPage(presenting.page - 1)}
@@ -710,14 +767,16 @@ export function Chatbot({
       </div>
 
       {/* Lesson rail — quick actions for the lesson in play. Hidden on the
-          grade gate (there is no lesson yet) and while the viewer pane is open
-          (the viewer already offers these) so the PDF and chat get the full
-          width. */}
+          grade gate (there is no lesson yet), on the class gate (the actions
+          here belong to a class, and none has been picked — offering "Request
+          access" would file it against whichever class came first), and while
+          the viewer pane is open (the viewer already offers these) so the PDF
+          and chat get the full width. */}
       <aside
         className={cn(
           "relative z-10 hidden w-80 shrink-0 flex-col border-l backdrop-blur-xl",
           light ? "border-slate-200/60 bg-white/40" : "border-white/5 bg-slate-950/40",
-          openedLesson || showFairProjects || selectedGrade === null
+          openedLesson || showFairProjects || selectedGrade === null || showClassGate
             ? ""
             : "xl:flex"
         )}

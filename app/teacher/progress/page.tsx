@@ -45,6 +45,9 @@ function positionLabel(p: ProgressEntry): string {
 
 type GradeFolderData = {
   grade: number | null;
+  // The class this folder is for. "" for the single unnamed class most
+  // teachers have, and then no class is named on the folder at all.
+  section: string;
   lessons: { entry: ProgressEntry; lesson?: Lesson }[];
   lastCompletedAt?: string;
 };
@@ -73,6 +76,7 @@ function GradeFolder({
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium text-slate-900">
             {folder.grade === null ? "Other lessons" : `Grade ${folder.grade}`}
+            {folder.section ? ` · Class ${folder.section}` : ""}
           </span>
           <span className="text-xs text-slate-500">
             {count} lesson{count === 1 ? "" : "s"} · last completed{" "}
@@ -142,17 +146,22 @@ export default function TeacherProgressPage() {
 
   // Finished lessons, filed by grade: grades ascending, and inside each one the
   // curriculum order the teacher taught them in.
+  // Filed by grade and class: a teacher who takes 6A and 6B taught each lesson
+  // twice, and one folder holding both copies would read as a duplicate rather
+  // than as two classes.
   const gradeFolders: GradeFolderData[] = (() => {
-    const byGrade = new Map<number | null, GradeFolderData>();
+    const byGrade = new Map<string, GradeFolderData>();
     for (const entry of completed) {
       const lesson = lessonOf(entry);
       const grade = lesson?.grade ?? null;
-      const folder = byGrade.get(grade) ?? { grade, lessons: [] };
+      const key = `${grade}|${entry.section}`;
+      const folder =
+        byGrade.get(key) ?? { grade, section: entry.section, lessons: [] };
       folder.lessons.push({ entry, lesson });
       if (!folder.lastCompletedAt || (entry.lastOpenedAt ?? "") > folder.lastCompletedAt) {
         folder.lastCompletedAt = entry.lastOpenedAt;
       }
-      byGrade.set(grade, folder);
+      byGrade.set(key, folder);
     }
     const folders: GradeFolderData[] = Array.from(byGrade.values());
     for (const folder of folders) {
@@ -161,13 +170,21 @@ export default function TeacherProgressPage() {
           (a.lesson?.lessonNo ?? 0) - (b.lesson?.lessonNo ?? 0)
       );
     }
-    folders.sort((a, b) => (a.grade ?? 99) - (b.grade ?? 99));
+    folders.sort(
+      (a, b) =>
+        (a.grade ?? 99) - (b.grade ?? 99) || a.section.localeCompare(b.section)
+    );
     return folders;
   })();
 
   // Open the grade they finished something in most recently; the rest stay
   // filed away.
-  const mostRecentGrade = completed.length > 0 ? lessonOf(completed[0])?.grade ?? null : null;
+  // Opened by default: the exact folder they last finished something in, class
+  // included, so a teacher of 6A and 6B lands on the one they just taught.
+  const mostRecentFolder =
+    completed.length > 0
+      ? `${lessonOf(completed[0])?.grade ?? null}|${completed[0].section}`
+      : null;
 
   if (loading) {
     return (
@@ -287,9 +304,11 @@ export default function TeacherProgressPage() {
           ) : (
             gradeFolders.map((folder) => (
               <GradeFolder
-                key={folder.grade ?? "other"}
+                key={`${folder.grade ?? "other"}|${folder.section}`}
                 folder={folder}
-                defaultOpen={folder.grade === mostRecentGrade}
+                defaultOpen={
+                  `${folder.grade}|${folder.section}` === mostRecentFolder
+                }
               />
             ))
           )}

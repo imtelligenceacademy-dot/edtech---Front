@@ -18,6 +18,7 @@ import type { Lesson } from "@/types";
 // projected window — which is exactly what keeps the assistant private.
 export function PresentingBar({
   lesson,
+  section,
   page,
   total,
   onPrev,
@@ -27,6 +28,8 @@ export function PresentingBar({
   light,
 }: {
   lesson: Lesson;
+  // The class on the other side of the projector — what is saved is theirs.
+  section: string;
   page: number;
   total: number;
   onPrev: () => void;
@@ -47,7 +50,9 @@ export function PresentingBar({
     try {
       await saveLessonProgress(
         lesson.id,
-        complete ? { complete: true, total } : { slide: page, total }
+        complete
+          ? { complete: true, total, section }
+          : { slide: page, total, section }
       );
       setSaved(complete ? "Marked complete" : `Saved — page ${page}`);
       if (complete) onCompleted();

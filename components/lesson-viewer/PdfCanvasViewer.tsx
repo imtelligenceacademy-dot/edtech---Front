@@ -26,6 +26,7 @@ import { useBlockSaveShortcuts, useLessonPdf } from "./useLessonPdf";
 export function PdfCanvasViewer({
   fileId,
   lessonId,
+  section = "",
   light = false,
   accessStatus,
   onExit,
@@ -37,6 +38,10 @@ export function PdfCanvasViewer({
 }: {
   fileId: string;
   lessonId?: string;
+  // The class being taught. Progress belongs to one class, not to the teacher:
+  // saving here must not move a class that was not in the room. "" is the
+  // single unnamed class most teachers have.
+  section?: string;
   light?: boolean;
   accessStatus?: string | null;
   onExit?: () => void; // return to the lesson list
@@ -293,7 +298,9 @@ export function PdfCanvasViewer({
     try {
       const p = await saveLessonProgress(
         lessonId,
-        complete ? { complete: true, total } : { slide: current, total }
+        complete
+          ? { complete: true, total, section }
+          : { slide: current, total, section }
       );
       setSaved(
         complete
