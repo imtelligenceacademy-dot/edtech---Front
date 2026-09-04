@@ -46,7 +46,7 @@ export default function SuperAdminChatsPage() {
   function openLessonThread(thread: ChatThread) {
     setOpenThread(thread);
     setMessages([]);
-    listChatMessages(thread.lessonId, teacherId)
+    listChatMessages(thread.lessonId, thread.section, teacherId)
       .then(setMessages)
       .catch(() => setMessages([]));
   }
@@ -112,10 +112,13 @@ export default function SuperAdminChatsPage() {
               ) : (
                 threads.map((thread) => (
                   <button
-                    key={thread.lessonId}
+                    // A lesson taught to several classes is several threads,
+                    // so the class is part of what identifies one.
+                    key={`${thread.lessonId}|${thread.section}`}
                     onClick={() => openLessonThread(thread)}
                     className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition ${
-                      openThread?.lessonId === thread.lessonId
+                      openThread?.lessonId === thread.lessonId &&
+                      openThread?.section === thread.section
                         ? "border-brand/40 bg-brand-50/60"
                         : "border-transparent hover:border-slate-200 hover:bg-slate-50"
                     }`}
@@ -126,6 +129,7 @@ export default function SuperAdminChatsPage() {
                         {thread.lessonTitle ?? thread.lessonId}
                       </span>
                       <span className="text-[11px] text-slate-500">
+                        {thread.section ? `Class ${thread.section} · ` : ""}
                         {thread.messageCount} messages · {formatDate(thread.lastMessageAt ?? undefined)}
                       </span>
                     </span>
@@ -137,7 +141,12 @@ export default function SuperAdminChatsPage() {
 
           <Card>
             <CardHeader
-              title={openThread?.lessonTitle ?? "Transcript"}
+              title={
+                openThread
+                  ? (openThread.lessonTitle ?? "Transcript") +
+                    (openThread.section ? ` · Class ${openThread.section}` : "")
+                  : "Transcript"
+              }
               subtitle={openThread ? undefined : "Pick a lesson to read its thread."}
             />
             <CardBody className="space-y-3">

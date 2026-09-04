@@ -217,7 +217,7 @@ export function Chatbot({
     pushAssistant,
     pushUser,
     clearThread,
-  } = useChatThread(contextLessonId);
+  } = useChatThread(contextLessonId, section);
   sayRef.current = pushAssistant;
 
   // A question in flight: streaming, stopping, retrying.
@@ -238,7 +238,11 @@ export function Chatbot({
   const quota = useAiQuota(answering);
 
   // What a question is asked about: the lesson in play and the page on screen.
-  const askContext = { lessonId: contextLessonId, currentSlide: viewedSlide };
+  const askContext = {
+    lessonId: contextLessonId,
+    section,
+    currentSlide: viewedSlide,
+  };
 
   // Follows the newest message unless the teacher has scrolled up to read.
   const { scrollRef, atBottom, onTranscriptScroll, jumpToLatest, followLatest } =

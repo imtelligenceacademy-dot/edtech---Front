@@ -29,7 +29,7 @@ export function useAiAnswer(thread: Thread) {
   // turn (and its error reply) must be trimmed off the history first.
   async function ask(
     text: string,
-    context: { lessonId: string | null; currentSlide: number | null },
+    context: { lessonId: string | null; section: string; currentSlide: number | null },
     retry = false
   ) {
     const { visibleMessages, setMessages, pushAssistant } = thread;
@@ -45,6 +45,9 @@ export function useAiAnswer(thread: Thread) {
       .map((m) => ({ role: m.role, content: m.content }));
     const assistantId = `a_${Date.now()}`;
     const threadId = context.lessonId;
+    // Held alongside the lesson: both together decide which thread the reply
+    // lands in, and the teacher can switch class while it streams.
+    const threadSection = context.section;
     let started = false;
     let sourceRef: string | undefined;
     const controller = new AbortController();
@@ -57,6 +60,7 @@ export function useAiAnswer(thread: Thread) {
         {
           message: text,
           lessonId: context.lessonId,
+          section: context.section,
           currentSlide: context.currentSlide,
           history,
         },
@@ -77,6 +81,7 @@ export function useAiAnswer(thread: Thread) {
                   content: delta,
                   timestamp: new Date().toISOString(),
                   lessonId: threadId,
+                  section: threadSection,
                 },
               ]);
             } else {
@@ -130,7 +135,11 @@ export function useAiAnswer(thread: Thread) {
   }
 
   // Re-ask the last question that failed, dropping the error reply.
-  function retryLast(context: { lessonId: string | null; currentSlide: number | null }) {
+  function retryLast(context: {
+    lessonId: string | null;
+    section: string;
+    currentSlide: number | null;
+  }) {
     const text = failedPrompt;
     if (!text) return;
     setFailedPrompt(null);

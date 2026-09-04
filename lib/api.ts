@@ -363,16 +363,24 @@ export function getLesson(lessonId: string, section?: string) {
 
 // A teacher's own thread for one lesson. `teacherId` is a super-admin extra;
 // the API refuses it for anyone else.
-export function listChatMessages(lessonId: string, teacherId?: string) {
-  const params = new URLSearchParams({ lessonId });
+// `section` is the class the conversation belongs to. Threads are per class, so
+// the same lesson taught to 6A and 6B has two of them. "" is the single unnamed
+// class most teachers have.
+export function listChatMessages(
+  lessonId: string,
+  section: string = "",
+  teacherId?: string
+) {
+  const params = new URLSearchParams({ lessonId, section });
   if (teacherId) params.set("teacherId", teacherId);
   return apiFetch<StoredChatMessage[]>(`/api/chat/messages?${params}`);
 }
 
-export function clearChatMessages(lessonId: string) {
-  return apiFetch<void>(`/api/chat/messages?lessonId=${encodeURIComponent(lessonId)}`, {
-    method: "DELETE",
-  });
+// Clears one class's thread. The same lesson's conversation with another class
+// is left standing.
+export function clearChatMessages(lessonId: string, section: string = "") {
+  const params = new URLSearchParams({ lessonId, section });
+  return apiFetch<void>(`/api/chat/messages?${params}`, { method: "DELETE" });
 }
 
 /** The caller's own remaining AI allowance. Any signed-in role may ask; the
@@ -559,6 +567,7 @@ export type AIChatTurn = { role: "user" | "assistant"; content: string };
 export function askTeacherAI(payload: {
   message: string;
   lessonId?: string | null;
+  section?: string;
   fairProjectId?: string | null;
   currentSlide?: number | null;
   history?: AIChatTurn[];
@@ -649,6 +658,8 @@ export function streamTeacherAI(
   payload: {
     message: string;
     lessonId?: string | null;
+    // The class being taught, so the exchange is filed under its own thread.
+    section?: string;
     fairProjectId?: string | null;
     // 1-based slide the teacher is viewing, so the assistant can inspect it.
     currentSlide?: number | null;

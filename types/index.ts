@@ -27,6 +27,8 @@ export interface StoredChatMessage {
   id: string;
   teacherId: string;
   lessonId: string;
+  /** The class it was said in. "" when the grade has one unnamed class. */
+  section: string;
   role: "user" | "assistant";
   content: string;
   sourceRef?: string | null;
@@ -38,6 +40,8 @@ export interface ChatThread {
   lessonId: string;
   lessonTitle?: string | null;
   grade?: number | null;
+  /** Which class. "" when the grade has one unnamed class. */
+  section: string;
   messageCount: number;
   lastMessageAt?: string | null;
 }
@@ -291,9 +295,12 @@ export interface AIMessage {
   cached?: boolean;
   sourceRef?: string; // e.g. "Grade 8 Lesson 2, Slide 4"
   timestamp: string;
-  // The lesson this turn belongs to. Conversations are one thread per lesson,
-  // so the chat shows only the messages tagged with the lesson in play.
+  // The lesson and class this turn belongs to. Conversations are one thread per
+  // lesson per class, so the chat shows only the messages tagged with both the
+  // lesson in play and the class being taught — what was asked in 6A does not
+  // reappear when the same lesson is opened for 6B.
   lessonId?: string | null;
+  section?: string;
 }
 
 /** What the signed-in user has left of their AI allowance.
