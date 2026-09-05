@@ -192,12 +192,17 @@ export function SchoolAdminChat() {
               }}
               rows={1}
               placeholder="Ask about your teachers, your school's progress, or a report…"
-              className={cn("max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm focus:outline-none", light ? "text-slate-900 placeholder:text-slate-400" : "text-white placeholder:text-slate-500")}
+              // text-base below sm: iOS zooms the page in on a focused field
+              // under 16px and never zooms back out. Same as the teacher
+              // composer; unchanged from sm up.
+              className={cn("max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-base focus:outline-none sm:text-sm", light ? "text-slate-900 placeholder:text-slate-400" : "text-white placeholder:text-slate-500")}
             />
             <button
               onClick={() => send()}
               disabled={!input.trim()}
-              className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition", input.trim() ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/40 hover:brightness-110" : light ? "bg-slate-100 text-slate-400" : "bg-white/5 text-slate-500")}
+              // The pseudo-element widens the touch target to 48px without
+              // moving or resizing the button. Same as the teacher composer.
+              className={cn("relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition after:absolute after:-inset-1.5 after:content-['']", input.trim() ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/40 hover:brightness-110" : light ? "bg-slate-100 text-slate-400" : "bg-white/5 text-slate-500")}
               aria-label="Send"
             >
               <ArrowUp size={16} />
