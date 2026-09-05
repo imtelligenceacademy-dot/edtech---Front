@@ -10,6 +10,9 @@ import { parseGradeSegment, TEACHER_HOME } from "@/lib/teacher-routes";
 // instead, and picking one sends them to /teacher/grade-7/<class>. That choice
 // belongs to Chatbot because it is the session that says which classes they
 // take, and the great majority take one per grade and never see it.
+// h-dvh, not h-screen: on a phone 100vh is the height with the browser chrome
+// hidden, so with overflow-hidden the bottom of the assistant — the composer and
+// its send button — sits below the visible area with no way to scroll to it.
 export default function TeacherGradePage({
   params,
 }: {
@@ -19,7 +22,7 @@ export default function TeacherGradePage({
   if (grade === null) redirect(TEACHER_HOME);
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-slate-100">
+    <div className="h-dvh w-screen overflow-hidden bg-slate-100">
       <Chatbot grade={grade} />
     </div>
   );

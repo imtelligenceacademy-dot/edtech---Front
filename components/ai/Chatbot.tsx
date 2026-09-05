@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Monitor,
   Trash2,
+  X,
 } from "lucide-react";
 import { cn, stripMarkdown } from "@/lib/utils";
 import {
@@ -127,6 +128,9 @@ export function Chatbot({
   // Gate the "save" effect until the previous session has been restored, so an
   // empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
+  // Below xl the lesson rail is a sheet rather than a column, because there is
+  // no room for both it and the conversation. Closed by default.
+  const [railOpen, setRailOpen] = useState(false);
   const pendingLessonIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -145,6 +149,12 @@ export function Chatbot({
   // harmless, because nothing is written until they have chosen.
   const section = chosenSection ?? "";
   const showClassGate = sessionLoaded && needsClassChoice && chosenSection === null;
+  // Whether there is a lesson rail at all: not on the grade gate (no lesson
+  // yet), not on the class gate (its actions belong to a class, and none has
+  // been picked), not in ICT Fair (view-only), and not while the viewer pane is
+  // open (the viewer already offers the same actions).
+  const railAvailable =
+    !openedLesson && !showFairProjects && selectedGrade !== null && !showClassGate;
 
   // The teacher's lessons, their progress in them, and their access requests —
   // all for the class in front of them.
@@ -287,6 +297,23 @@ export function Chatbot({
     if (selectedGrade !== null) rememberGrade(selectedGrade);
   }, [selectedGrade]);
 
+  // The rail sheet closes itself whenever there stops being a rail to show —
+  // opening a lesson, switching to ICT Fair — so it is never left standing over
+  // a screen it does not belong to, or found already open on the way back.
+  useEffect(() => {
+    if (!railAvailable) setRailOpen(false);
+  }, [railAvailable]);
+
+  // Escape closes the sheet, as it does the other overlays here.
+  useEffect(() => {
+    if (!railOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRailOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [railOpen]);
+
   // The restored lesson id only becomes a Lesson once the list has loaded.
   useEffect(() => {
     const id = pendingLessonIdRef.current;
@@ -312,6 +339,9 @@ export function Chatbot({
   }, [input]);
 
   function openLesson(lesson: Lesson) {
+    // The rail sheet has done its job once a lesson is chosen; leaving it up
+    // would cover the thing the teacher just asked to see.
+    setRailOpen(false);
     // Sequential unlocking — a teacher can only open their current lesson.
     if (lesson.accessStatus && lesson.accessStatus !== "available") {
       pushAssistant(lessonLockMessage(lesson), { sourceRef: lesson.title });
@@ -645,6 +675,8 @@ export function Chatbot({
           onNewChat={resetSession}
           showFairProjects={showFairProjects}
           onOpenFair={openFairProjects}
+          showLessonsButton={railAvailable}
+          onOpenLessons={() => setRailOpen(true)}
           light={light}
         />
 
@@ -755,20 +787,36 @@ export function Chatbot({
         )}
 
         {/* Hidden on the grade gate (the assistant isn't usable until a grade
-            is picked) and in ICT Fair mode (view-only, no chat) */}
-        {!showFairProjects && selectedGrade !== null && (
+            is picked), on the class gate (a question asked before a class is
+            chosen has no lesson behind it, and still spends one of the
+            teacher's hourly questions), and in ICT Fair mode (view-only, no
+            chat). */}
+        {!showFairProjects && selectedGrade !== null && !showClassGate && (
           <ChatComposer
             value={input}
             onChange={setInput}
             onSend={() => send()}
             onStop={stopStreaming}
             busy={thinking || streaming}
-          quota={quota}
+            quota={quota}
             inputRef={inputRef}
             light={light}
           />
         )}
       </div>
+
+      {/* Below xl the rail sits over the chat instead of beside it, and the
+          backdrop is how it is dismissed. There is no room for a 320px column
+          next to a conversation on a phone, but the rail is the only way to
+          open a lesson, mark one complete or ask for access — so it has to be
+          reachable, not merely absent. */}
+      {railAvailable && railOpen && (
+        <div
+          onClick={() => setRailOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-[1px] xl:hidden"
+          aria-hidden
+        />
+      )}
 
       {/* Lesson rail — quick actions for the lesson in play. Hidden on the
           grade gate (there is no lesson yet), on the class gate (the actions
@@ -778,11 +826,18 @@ export function Chatbot({
           and chat get the full width. */}
       <aside
         className={cn(
-          "relative z-10 hidden w-80 shrink-0 flex-col border-l backdrop-blur-xl",
-          light ? "border-slate-200/60 bg-white/40" : "border-white/5 bg-slate-950/40",
-          openedLesson || showFairProjects || selectedGrade === null || showClassGate
-            ? ""
-            : "xl:flex"
+          "w-80 shrink-0 flex-col border-l backdrop-blur-xl",
+          // A sheet below xl, the static column it has always been from xl up.
+          "fixed inset-y-0 right-0 z-40 max-w-[85%] shadow-2xl transition-transform duration-200 ease-out",
+          "xl:relative xl:z-10 xl:max-w-none xl:translate-x-0 xl:shadow-none xl:transition-none",
+          // Opaque as a sheet, translucent as a column. The 40% wash reads fine
+          // against the page it has always sat on, but over a dimmed backdrop it
+          // turns the lesson list grey on grey.
+          light
+            ? "border-slate-200/60 bg-white xl:bg-white/40"
+            : "border-white/5 bg-slate-900 xl:bg-slate-950/40",
+          railAvailable ? "flex" : "hidden",
+          railOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
         <div
@@ -795,6 +850,17 @@ export function Chatbot({
           <p className={cn("text-sm font-semibold", light ? "text-slate-900" : "text-white")}>
             Your lesson
           </p>
+          {/* Only the sheet needs dismissing; from xl the rail is just there. */}
+          <button
+            onClick={() => setRailOpen(false)}
+            aria-label="Close"
+            className={cn(
+              "-my-2 -mr-2 ml-auto flex h-10 w-10 items-center justify-center rounded-lg transition xl:hidden",
+              light ? "text-slate-500 hover:bg-slate-100" : "text-slate-400 hover:bg-white/10"
+            )}
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <div className="chat-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -828,7 +894,10 @@ export function Chatbot({
                 </button>
                 {panelLesson.fileId && !presenting && (
                   <button
-                    onClick={() => startPresenting(panelLesson)}
+                    onClick={() => {
+                      setRailOpen(false);
+                      startPresenting(panelLesson);
+                    }}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition",
                       light
@@ -840,7 +909,10 @@ export function Chatbot({
                   </button>
                 )}
                 <button
-                  onClick={() => setFullscreenLesson(panelLesson)}
+                  onClick={() => {
+                    setRailOpen(false);
+                    setFullscreenLesson(panelLesson);
+                  }}
                   className={cn(
                     "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition",
                     light
@@ -913,10 +985,13 @@ export function Chatbot({
                           : "border-transparent hover:border-white/10 hover:bg-white/5"
                       )}
                     >
+                      {/* Roomier rows below xl, where this list is a sheet a
+                          teacher taps with a thumb rather than a column she
+                          clicks. A 17px row is not a target. Unchanged at xl. */}
                       <button
                         onClick={() => openLesson(l)}
                         title={l.title}
-                        className="flex w-full items-center gap-2 text-left"
+                        className="flex w-full items-center gap-2 py-3 text-left xl:py-0"
                       >
                         {status === "completed" ? (
                           <CheckCircle2 size={12} className="shrink-0 text-emerald-500" />
@@ -958,7 +1033,9 @@ export function Chatbot({
                           ) : (
                             <button
                               onClick={() => requestAccess(l, pushAssistant)}
-                              className="flex items-center gap-0.5 font-medium text-brand-700 underline underline-offset-2 transition hover:text-brand-800"
+                              // The pseudo-element is the touch area; the link
+                              // itself keeps its place in the sentence.
+                              className="relative flex items-center gap-0.5 font-medium text-brand-700 underline underline-offset-2 transition after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-brand-800"
                             >
                               <BellRing size={11} /> Request access
                             </button>

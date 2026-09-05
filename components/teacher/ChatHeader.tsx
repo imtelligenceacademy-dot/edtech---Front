@@ -1,6 +1,9 @@
 "use client";
 
-import { Plus } from "lucide-react";
+// BookOpen, not Presentation: the ICT Fair button beside this one already uses
+// Presentation, and below sm both labels are hidden — two identical icons would
+// be two guesses.
+import { BookOpen, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FairButton } from "@/components/teacher/FairProjects";
 import { UserMenu } from "@/components/teacher/UserMenu";
@@ -16,6 +19,8 @@ export function ChatHeader({
   onNewChat,
   showFairProjects,
   onOpenFair,
+  showLessonsButton,
+  onOpenLessons,
   light,
 }: {
   session: Session | null;
@@ -24,6 +29,11 @@ export function ChatHeader({
   onNewChat: () => void;
   showFairProjects: boolean;
   onOpenFair: () => void;
+  /** Whether there is a lesson rail to open. Below xl it is a sheet, and this
+   *  is the only way to reach it; from xl the rail is always on screen and the
+   *  button is hidden. */
+  showLessonsButton: boolean;
+  onOpenLessons: () => void;
   light: boolean;
 }) {
   return (
@@ -69,14 +79,33 @@ export function ChatHeader({
         <button
           onClick={onNewChat}
           title="Start a new session"
+          // The pill stays 27px tall; the pseudo-element takes the touch area to
+          // 47 so a thumb hits it. Same on the two buttons beside it.
           className={cn(
             "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
+            "relative after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-['']",
             light
               ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
               : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
           )}
         >
           <Plus size={13} /> <span className="hidden sm:inline">New chat</span>
+        </button>
+      )}
+      {showLessonsButton && (
+        <button
+          onClick={onOpenLessons}
+          title="Your lesson"
+          aria-label="Your lesson"
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95 xl:hidden",
+            "relative after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-['']",
+            light
+              ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
+              : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
+          )}
+        >
+          <BookOpen size={13} /> <span className="hidden sm:inline">Lesson</span>
         </button>
       )}
       {session?.ictFairAccess && (

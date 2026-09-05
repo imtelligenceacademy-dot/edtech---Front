@@ -153,7 +153,9 @@ function Header({
             onChange={(e) => onQuery(e.target.value)}
             placeholder="Search a section, grade or project…"
             aria-label="Search ICT Fair projects"
-            className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand"
+            // text-base below sm: iOS zooms the page in on a focused field
+            // under 16px and does not zoom back out. Same as the composer.
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm"
           />
         </div>
 
@@ -180,7 +182,7 @@ function Header({
           {hiddenByScope === 1 ? "is" : "are"} hidden.{" "}
           <button
             onClick={() => onScope("all")}
-            className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+            className="relative font-medium text-brand-700 underline underline-offset-2 after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] hover:text-brand-800"
           >
             Show all grades
           </button>
@@ -203,8 +205,10 @@ function ScopeTab({
     <button
       onClick={onClick}
       aria-pressed={active}
+      // Touch area only: the tab keeps its size, the pseudo-element takes it to
+      // 44px so the two sit apart under a thumb.
       className={cn(
-        "rounded-md px-3 py-1.5 text-xs font-medium transition",
+        "relative rounded-md px-3 py-1.5 text-xs font-medium transition after:absolute after:-inset-y-2 after:inset-x-0 after:content-['']",
         active
           ? "bg-brand text-white shadow-sm"
           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"

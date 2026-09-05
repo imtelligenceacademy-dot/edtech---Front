@@ -59,8 +59,11 @@ export function MessageBubble({
               <button
                 onClick={copy}
                 title="Copy this answer"
+                // Revealed on hover, which a touch screen does not have — so on
+                // one it is simply always there, and the pseudo-element gives it
+                // a target a thumb can hit. Unchanged with a mouse.
                 className={cn(
-                  "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] opacity-0 transition group-hover:opacity-100 focus:opacity-100",
+                  "relative flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] opacity-0 transition after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-[''] group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:!opacity-100",
                   light
                     ? "border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900"
                     : "border-white/10 bg-white/5 text-slate-400 hover:text-white"

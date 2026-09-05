@@ -93,7 +93,7 @@ export default function PresentLessonPage({
 
   if (error) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-black px-8 text-center text-sm text-slate-400">
+      <div className="flex h-dvh w-screen items-center justify-center bg-black px-8 text-center text-sm text-slate-400">
         {error}
       </div>
     );
@@ -101,7 +101,7 @@ export default function PresentLessonPage({
 
   if (!lesson?.fileId) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-black">
+      <div className="flex h-dvh w-screen items-center justify-center bg-black">
         <Loader2 size={28} className="animate-spin text-slate-600" />
       </div>
     );
@@ -109,7 +109,7 @@ export default function PresentLessonPage({
 
   return (
     <div
-      className="relative h-screen w-screen overflow-hidden bg-black"
+      className="relative h-dvh w-screen overflow-hidden bg-black"
       onDoubleClick={toggleFullscreen}
     >
       <PdfCanvasViewer

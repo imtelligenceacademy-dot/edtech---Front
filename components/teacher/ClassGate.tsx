@@ -91,8 +91,10 @@ export function ClassGate({
 
       <button
         onClick={onBack}
+        // Padding pulled back out by the negative margin: a 17px-tall line of
+        // text is not something a thumb can aim at.
         className={cn(
-          "mt-8 text-[11px] underline-offset-4 transition hover:underline",
+          "-mx-4 -mb-3 mt-5 px-4 py-3 text-[11px] underline-offset-4 transition hover:underline",
           light ? "text-slate-500 hover:text-slate-700" : "text-slate-400 hover:text-slate-200"
         )}
       >

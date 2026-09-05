@@ -90,7 +90,10 @@ export function WelcomeScreen({
           onClick={() => onOpenLesson(current)}
           className="mt-8 w-full rounded-2xl border border-brand/30 bg-white p-5 text-left shadow-lg shadow-brand/10 transition hover:border-brand/60 hover:shadow-brand/20"
         >
-          <div className="flex items-center gap-4">
+          {/* Wraps below sm: on a phone the call to action takes its own line so
+              the title gets the full width. Sharing the row leaves the title
+              about 130px, which is not enough to say which lesson it is. */}
+          <div className="flex flex-wrap items-center gap-4">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/30">
               <Presentation size={18} />
             </span>
@@ -99,11 +102,15 @@ export function WelcomeScreen({
                 {percent > 0 ? "Continue where you left off" : "Your current lesson"}
                 {current.course ? ` · ${courseLabel(current.course)}` : ""}
               </p>
-              <p className="mt-0.5 truncate text-base font-semibold text-slate-900">
+              {/* Wraps on a phone, truncates from sm up. Every title starts
+                  "Grade 7 python lesson NN", so one truncated line on a narrow
+                  screen cuts away the only part that says which lesson this is
+                  and leaves every row looking the same. */}
+              <p className="mt-0.5 text-base font-semibold text-slate-900 sm:truncate">
                 {current.title}
               </p>
             </div>
-            <span className="flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3.5 py-2 text-xs font-medium text-white shadow-lg shadow-brand/30">
+            <span className="flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-br from-brand to-brand-700 px-3.5 py-2 text-xs font-medium text-white shadow-lg shadow-brand/30 sm:w-auto sm:justify-start">
               {percent > 0 ? "Continue" : "Open lesson"}
               <ChevronRight size={13} />
             </span>
@@ -249,7 +256,9 @@ export function LessonChip({
         <Icon size={14} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className={cn("block truncate font-medium", locked && "text-slate-500")}>
+        {/* As above: the lesson number is the whole point of the row, and it is
+            the first thing a truncated title loses. */}
+        <span className={cn("block font-medium sm:truncate", locked && "text-slate-500")}>
           {lesson.title}
         </span>
         <span className={cn("text-[11px]", meta.tone || "text-slate-400")}>{meta.label}</span>

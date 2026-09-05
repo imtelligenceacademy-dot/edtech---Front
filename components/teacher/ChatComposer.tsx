@@ -61,7 +61,11 @@ export function ChatComposer({
             rows={1}
             placeholder="Message IM-Telligence AI…"
             className={cn(
-              "max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm focus:outline-none disabled:cursor-not-allowed",
+              // text-base below sm, not text-sm: iOS Safari zooms the whole
+              // page in when a focused field is under 16px and never zooms back
+              // out, which leaves a teacher pinching to find the send button
+              // after every question. Unchanged from sm up.
+              "max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-base focus:outline-none disabled:cursor-not-allowed sm:text-sm",
               light
                 ? "text-slate-900 placeholder:text-slate-400"
                 : "text-white placeholder:text-slate-500"
@@ -70,7 +74,10 @@ export function ChatComposer({
           {busy ? (
             <button
               onClick={onStop}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-slate-700"
+              // The pseudo-element widens the touch target to 48px without
+              // moving or resizing the button itself; 36px is below what a
+              // thumb reliably hits. Same for Send below.
+              className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white transition after:absolute after:-inset-1.5 after:content-[''] hover:bg-slate-700"
               aria-label="Stop the reply"
               title="Stop"
             >
@@ -81,7 +88,7 @@ export function ChatComposer({
               onClick={onSend}
               disabled={!value.trim()}
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition",
+                "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition after:absolute after:-inset-1.5 after:content-['']",
                 value.trim()
                   ? "bg-gradient-to-br from-brand to-brand-700 text-white shadow-lg shadow-brand/40 hover:brightness-110"
                   : light

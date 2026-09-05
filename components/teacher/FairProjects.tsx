@@ -66,6 +66,8 @@ export function FairButton({
       title="ICT Fair projects"
       className={cn(
         "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95",
+        // Touch area only — the pill itself is unchanged. See ChatHeader.
+        "relative after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-['']",
         active
           ? "border-slate-900 bg-white text-slate-900"
           : light
