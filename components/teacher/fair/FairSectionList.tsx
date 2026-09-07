@@ -4,7 +4,6 @@ import { FileText, FolderOpen, Presentation, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   matchesQuery,
-  matchesTeacherGrades,
   sectionGradeLabels,
   sortSections,
   visibleProjects,
@@ -20,31 +19,25 @@ import type { FairProject, FairSection } from "@/types";
 // Grades are shown as chips on the section header rather than on every project
 // card. Repeating "G7" on each of four cards is noise; the section already said
 // it once.
+//
+// There is no "my grades / all grades" choice here any more. The server sends a
+// teacher the sections for the grades she teaches and nothing else, so there is
+// nothing for such a control to reveal — and offering it implied the rest were
+// hers to look at, which was the bug.
 
 export function FairSectionList({
   sections,
   query,
   onQuery,
-  scope,
-  onScope,
-  teacherGrades,
   onOpen,
 }: {
   sections: FairSection[];
   query: string;
   onQuery: (value: string) => void;
-  scope: "mine" | "all";
-  onScope: (value: "mine" | "all") => void;
-  teacherGrades: string[];
   onOpen: (project: FairProject) => void;
 }) {
   const ordered = sortSections(sections);
-  const inScope =
-    scope === "mine"
-      ? ordered.filter((s) => matchesTeacherGrades(s, teacherGrades))
-      : ordered;
-  const shown = inScope.filter((s) => matchesQuery(s, query));
-  const hiddenByScope = ordered.length - inScope.length;
+  const shown = ordered.filter((s) => matchesQuery(s, query));
 
   return (
     <div className="mx-auto w-full max-w-5xl pb-10">
@@ -53,21 +46,13 @@ export function FairSectionList({
         shown={shown}
         query={query}
         onQuery={onQuery}
-        scope={scope}
-        onScope={onScope}
-        teacherGrades={teacherGrades}
-        hiddenByScope={hiddenByScope}
       />
 
       {shown.length === 0 ? (
         <EmptyState
           query={query}
-          scope={scope}
           hasAny={ordered.length > 0}
-          onClear={() => {
-            onQuery("");
-            onScope("all");
-          }}
+          onClear={() => onQuery("")}
         />
       ) : (
         <div className="mt-6 space-y-5">
@@ -76,7 +61,6 @@ export function FairSectionList({
               key={section.id}
               section={section}
               query={query}
-              teacherGrades={teacherGrades}
               onOpen={onOpen}
             />
           ))}
@@ -91,19 +75,11 @@ function Header({
   shown,
   query,
   onQuery,
-  scope,
-  onScope,
-  teacherGrades,
-  hiddenByScope,
 }: {
   sections: FairSection[];
   shown: FairSection[];
   query: string;
   onQuery: (v: string) => void;
-  scope: "mine" | "all";
-  onScope: (v: "mine" | "all") => void;
-  teacherGrades: string[];
-  hiddenByScope: number;
 }) {
   const total = sections.reduce((n, s) => n + s.projects.length, 0);
   // Counted through the same function the bands render with. Summing
@@ -158,91 +134,27 @@ function Header({
             className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand sm:text-sm"
           />
         </div>
-
-        {/* Only worth offering when the teacher has grades to narrow to. */}
-        {teacherGrades.length > 0 && (
-          <div
-            role="group"
-            aria-label="Which sections to show"
-            className="flex shrink-0 rounded-lg border border-slate-300 bg-white p-0.5"
-          >
-            <ScopeTab active={scope === "mine"} onClick={() => onScope("mine")}>
-              My grades
-            </ScopeTab>
-            <ScopeTab active={scope === "all"} onClick={() => onScope("all")}>
-              All grades
-            </ScopeTab>
-          </div>
-        )}
       </div>
-
-      {scope === "mine" && hiddenByScope > 0 && (
-        <p className="mt-2 text-xs text-slate-500">
-          {hiddenByScope} section{hiddenByScope === 1 ? "" : "s"} for other grades{" "}
-          {hiddenByScope === 1 ? "is" : "are"} hidden.{" "}
-          <button
-            onClick={() => onScope("all")}
-            className="relative font-medium text-brand-700 underline underline-offset-2 after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] hover:text-brand-800"
-          >
-            Show all grades
-          </button>
-        </p>
-      )}
     </div>
-  );
-}
-
-function ScopeTab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      // Touch area only: the tab keeps its size, the pseudo-element takes it to
-      // 44px so the two sit apart under a thumb.
-      className={cn(
-        "relative rounded-md px-3 py-1.5 text-xs font-medium transition after:absolute after:-inset-y-2 after:inset-x-0 after:content-['']",
-        active
-          ? "bg-brand text-white shadow-sm"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
 function SectionBand({
   section,
   query,
-  teacherGrades,
   onOpen,
 }: {
   section: FairSection;
   query: string;
-  teacherGrades: string[];
   onOpen: (project: FairProject) => void;
 }) {
   const projects = visibleProjects(section, query);
   const grades = sectionGradeLabels(section);
-  // In "all grades" view, a section outside the teacher's own grades is still
-  // readable but visibly not theirs — dimming the chrome, never the titles.
-  const isMine = matchesTeacherGrades(section, teacherGrades);
+  // Every section on this screen is one of the teacher's own now, so there is
+  // no "not yours" state left to dim.
 
   return (
-    <section
-      className={cn(
-        "overflow-hidden rounded-xl border bg-white shadow-sm",
-        isMine ? "border-slate-200" : "border-slate-200/70 bg-slate-50/40"
-      )}
-    >
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-slate-100 px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -252,12 +164,7 @@ function SectionBand({
                 {grades.map((g) => (
                   <span
                     key={g}
-                    className={cn(
-                      "rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-                      isMine
-                        ? "border-brand-100 bg-brand-50 text-brand-700"
-                        : "border-slate-200 bg-white text-slate-500"
-                    )}
+                    className="rounded-md border border-brand-100 bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium text-brand-700"
                   >
                     {g}
                   </span>
@@ -346,12 +253,10 @@ function ProjectCard({
 
 function EmptyState({
   query,
-  scope,
   hasAny,
   onClear,
 }: {
   query: string;
-  scope: "mine" | "all";
   hasAny: boolean;
   onClear: () => void;
 }) {
@@ -367,17 +272,13 @@ function EmptyState({
       ) : (
         <>
           <p className="text-sm text-slate-600">
-            {query
-              ? "Nothing matches that search."
-              : scope === "mine"
-              ? "No sections for the grades you teach."
-              : "Nothing to show."}
+            {query ? "Nothing matches that search." : "Nothing to show."}
           </p>
           <button
             onClick={onClear}
             className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
           >
-            Clear search and show all grades
+            Clear search
           </button>
         </>
       )}

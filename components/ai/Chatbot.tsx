@@ -688,11 +688,7 @@ export function Chatbot({
           className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
         >
           {showFairProjects ? (
-            <FairProjectsScreen
-              sections={fairSections}
-              teacherGrades={session?.grades ?? []}
-              onOpen={openFairProject}
-            />
+            <FairProjectsScreen sections={fairSections} onOpen={openFairProject} />
           ) : selectedGrade === null ? (
             <GradeGate
               grades={availableGrades}

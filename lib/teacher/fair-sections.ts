@@ -32,15 +32,6 @@ export function sectionGradeLabels(section: FairSection): string[] {
   return ALL_GRADE_CODES.filter((c) => section.grades.includes(c)).map(gradeLabel);
 }
 
-/** Whether any of the teacher's grades fall inside this section. */
-export function matchesTeacherGrades(
-  section: FairSection,
-  teacherGrades: string[]
-): boolean {
-  if (teacherGrades.length === 0) return true;
-  return section.grades.some((g) => teacherGrades.includes(g));
-}
-
 export function matchesQuery(section: FairSection, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;

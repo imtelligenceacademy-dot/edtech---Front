@@ -7,40 +7,24 @@ import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import { FairSectionList } from "@/components/teacher/fair/FairSectionList";
 import type { FairProject, FairSection } from "@/types";
 
+// The grades a teacher takes are all that reaches this screen: the server
+// sends the sections for those grades and nothing else. So there is no scope
+// to choose between any more, and nothing to filter client-side — a filter the
+// client can switch off was never a scoping rule to begin with.
 export function FairProjectsScreen({
   sections,
-  teacherGrades,
   onOpen,
 }: {
   sections: FairSection[];
-  teacherGrades: string[];
   onOpen: (project: FairProject) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<"mine" | "all">("all");
-  // Whether the teacher has picked a scope themselves. Without this the effect
-  // below would keep dragging them back to "My grades" every time it ran.
-  const [chosen, setChosen] = useState(false);
-
-  // Teachers land on their own grades, because that is what they came for.
-  // It cannot be the initial state: the session arrives a moment after the
-  // first render, so `teacherGrades` is still empty when useState runs and the
-  // screen would open on "All grades" for everybody.
-  useEffect(() => {
-    if (!chosen && teacherGrades.length > 0) setScope("mine");
-  }, [chosen, teacherGrades]);
 
   return (
     <FairSectionList
       sections={sections}
       query={query}
       onQuery={setQuery}
-      scope={scope}
-      onScope={(next) => {
-        setChosen(true);
-        setScope(next);
-      }}
-      teacherGrades={teacherGrades}
       onOpen={onOpen}
     />
   );
