@@ -9,9 +9,15 @@ import { Topbar } from "./Topbar";
 
 export function DashboardShell({
   role,
+  fullBleed = false,
   children,
 }: {
   role: Role;
+  /** Let the page own the whole area: no page padding, no width cap. For a
+   *  screen that IS the app rather than a document in it — the assistant, which
+   *  otherwise sat in a 1400px column with the rest of a wide monitor blank
+   *  beside it. */
+  fullBleed?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -79,7 +85,15 @@ export function DashboardShell({
           session={session}
           onOpenNavigation={navigable ? () => setNavigationOpen(true) : undefined}
         />
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-[1400px] w-full">{children}</main>
+        <main
+          className={
+            fullBleed
+              ? "flex-1 w-full"
+              : "flex-1 w-full max-w-[1400px] p-4 sm:p-6 md:p-8"
+          }
+        >
+          {children}
+        </main>
       </div>
       </div>
     </div>

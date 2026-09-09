@@ -6,7 +6,7 @@ export default function SchoolAdminAIPage() {
   // and the chat inside is overflow-hidden — so the composer at its bottom ends
   // up below the visible area with no way to scroll to it.
   return (
-    <div className="h-[calc(100dvh-3.5rem)] -m-4 sm:-m-6 md:-m-8">
+    <div className="h-[calc(100dvh-3.5rem)]">
       <SchoolAdminChat />
     </div>
   );
