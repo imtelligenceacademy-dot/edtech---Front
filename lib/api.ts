@@ -10,6 +10,7 @@ import type {
   FairSection,
   Lesson,
   ProgressEntry,
+  ProgressResetResult,
   Report,
   Role,
   School,
@@ -467,6 +468,19 @@ export function denyAccessRequest(requestId: string) {
 // --- Super-admin: per-teacher sequential-unlock management ------------------ #
 export function getTeacherAccess(teacherId: string) {
   return apiFetch<TeacherAccess>(`/api/lessons/access/${teacherId}`);
+}
+
+// Put a teacher's recorded progress back to never-opened. Omitting lessonId
+// means every lesson; omitting section means every class — which is the case a
+// school needs after training on real lessons before term.
+export function resetTeacherProgress(
+  teacherId: string,
+  scope: { lessonId?: string; section?: string } = {}
+) {
+  return apiFetch<ProgressResetResult>(
+    `/api/lessons/access/${teacherId}/reset`,
+    { method: "POST", body: JSON.stringify(scope) }
+  );
 }
 
 // An override belongs to one class: unlocking a lesson for 6B must not reopen

@@ -80,7 +80,10 @@ export interface School {
   createdAt?: string;
 }
 
-export type LessonStatus = "not-started" | "in-progress" | "completed" | "late";
+// Nothing is "late": a lesson a teacher has not reached is where they are,
+// not a failing. The value was retired server-side and cleared from existing
+// rows by the d8b21c60fa73 migration.
+export type LessonStatus = "not-started" | "in-progress" | "completed";
 
 export type LessonAccessStatus = "available" | "completed" | "waiting" | "locked";
 
@@ -152,6 +155,15 @@ export interface TeacherAccessTrack {
   lessons: TeacherLessonAccessRow[];
 }
 
+/** What a progress reset cleared, for the confirmation the admin reads back. */
+export interface ProgressResetResult {
+  lessons: number;
+  completedCleared: number;
+  startedCleared: number;
+  overridesCleared: number;
+  classes: number;
+}
+
 export interface TeacherAccess {
   teacherId: string;
   teacherName: string;
@@ -190,7 +202,7 @@ export interface Slide {
   imageUrl?: string;
 }
 
-export type WatchdogStatus = "on-track" | "late" | "not-opened" | "completed" | "needs-attention";
+export type WatchdogStatus = "on-track" | "not-opened" | "completed" | "needs-attention";
 
 export interface ProgressEntry {
   id: string;
