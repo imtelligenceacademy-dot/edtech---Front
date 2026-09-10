@@ -27,22 +27,45 @@ export function sortSections(sections: FairSection[]): FairSection[] {
   );
 }
 
+/**
+ * A project's name as a person reads it.
+ *
+ * The title is the uploaded filename minus its extension, so it arrives as
+ * Grade_11_Physics_Collision_Crash_Safety_Tester. Underscores are how a
+ * filesystem spells a space, not how a teacher reads one — and CSS sees the
+ * whole thing as a single unbreakable word, so it cannot wrap and the end of
+ * the name is clipped off. That end is the part that says which project it is.
+ *
+ * Spelling it with spaces fixes both at once: it reads properly, and it gives
+ * the browser somewhere to break.
+ */
+export function projectTitle(project: FairProject): string {
+  return project.title.replace(/_+/g, " ").trim();
+}
+
+/** Underscores and spaces treated alike, so a search matches either spelling. */
+function searchable(text: string): string {
+  return text.replace(/_+/g, " ").toLowerCase();
+}
+
 /** "KG1, KG2" — the grades a section covers, in curriculum order. */
 export function sectionGradeLabels(section: FairSection): string[] {
   return ALL_GRADE_CODES.filter((c) => section.grades.includes(c)).map(gradeLabel);
 }
 
 export function matchesQuery(section: FairSection, query: string): boolean {
-  const q = query.trim().toLowerCase();
+  // Both sides normalised, so "Grade 11" and "Grade_11" find the same project.
+  // A teacher types what they see on screen; what they see now has spaces.
+  const q = searchable(query.trim());
   if (!q) return true;
-  const haystack = [
-    section.title,
-    section.blurb ?? "",
-    ...sectionGradeLabels(section),
-    ...section.projects.map((p) => p.title),
-  ]
-    .join(" ")
-    .toLowerCase();
+  const haystack = searchable(
+    [
+      section.title,
+      section.blurb ?? "",
+      ...sectionGradeLabels(section),
+      ...section.projects.map((p) => p.title),
+    ].join(" ")
+  );
   return haystack.includes(q);
 }
 
@@ -52,14 +75,14 @@ export function visibleProjects(
   section: FairSection,
   query: string
 ): FairProject[] {
-  const q = query.trim().toLowerCase();
+  const q = searchable(query.trim());
   if (!q) return section.projects;
   // A section matched by its own name or grade keeps all of its projects.
-  const sectionItself = [section.title, section.blurb ?? "", ...sectionGradeLabels(section)]
-    .join(" ")
-    .toLowerCase();
+  const sectionItself = searchable(
+    [section.title, section.blurb ?? "", ...sectionGradeLabels(section)].join(" ")
+  );
   if (sectionItself.includes(q)) return section.projects;
-  return section.projects.filter((p) => p.title.toLowerCase().includes(q));
+  return section.projects.filter((p) => searchable(p.title).includes(q));
 }
 
 export function countProjects(sections: FairSection[]): number {

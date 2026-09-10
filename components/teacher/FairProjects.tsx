@@ -5,6 +5,7 @@ import { Minimize2, Presentation } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import { FairSectionList } from "@/components/teacher/fair/FairSectionList";
+import { projectTitle } from "@/lib/teacher/fair-sections";
 import type { FairProject, FairSection } from "@/types";
 
 // The grades a teacher takes are all that reaches this screen: the server
@@ -89,7 +90,9 @@ export function FairFullscreen({
           <Presentation size={15} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-slate-900">{project.title}</p>
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {projectTitle(project)}
+          </p>
           <p className="text-[11px] text-slate-500">ICT Fair · Full-screen preview</p>
         </div>
         <button

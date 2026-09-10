@@ -4,6 +4,7 @@ import { FileText, FolderOpen, Presentation, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   matchesQuery,
+  projectTitle,
   sectionGradeLabels,
   sortSections,
   visibleProjects,
@@ -230,13 +231,16 @@ function ProjectCard({
         <FileText size={15} />
       </span>
       <span className="min-w-0 flex-1">
+        {/* break-words as well as the spaces: a project genuinely named as one
+            long word still has to wrap rather than run out of its card and lose
+            its own ending. */}
         <span
           className={cn(
-            "block text-sm font-medium leading-snug",
+            "block break-words text-sm font-medium leading-snug",
             ready ? "text-slate-900" : "text-slate-400"
           )}
         >
-          {project.title}
+          {projectTitle(project)}
         </span>
         <span
           className={cn(
