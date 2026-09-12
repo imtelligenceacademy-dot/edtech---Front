@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import type { Lesson } from "@/types";
 
@@ -87,7 +88,7 @@ export function LessonPane({
               light ? "text-slate-500" : "text-slate-400"
             )}
           >
-            Grade {lesson.grade} · {isPdf ? "PDF lesson" : `${total} slides`}
+            {gradeTitle(lesson.grade)} · {isPdf ? "PDF lesson" : `${total} slides`}
           </p>
         </div>
         {!isPdf && (
@@ -321,7 +322,7 @@ export function FullscreenPdf({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-slate-900">{lesson.title}</p>
           <p className="text-[11px] text-slate-500">
-            Grade {lesson.grade} · Full-screen preview
+            {gradeTitle(lesson.grade)} · Full-screen preview
           </p>
         </div>
         <button

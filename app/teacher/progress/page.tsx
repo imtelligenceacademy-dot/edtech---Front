@@ -16,6 +16,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { listLessons, listProgress } from "@/lib/api";
 import { gradePath, TEACHER_HOME } from "@/lib/teacher-routes";
 import { courseLabel } from "@/lib/teacher/lesson-order";
+import { gradeTitle } from "@/lib/grades";
 import { cn, formatDate } from "@/lib/utils";
 import type { Lesson, ProgressEntry } from "@/types";
 
@@ -29,7 +30,7 @@ function coursePrefix(lesson?: Lesson): string {
 // "Grade 7 · Python · " prefix, for lines that stand outside a grade folder.
 function lessonMeta(lesson?: Lesson): string {
   if (!lesson) return "";
-  return `Grade ${lesson.grade} · ${coursePrefix(lesson)}`;
+  return `${gradeTitle(lesson.grade)} · ${coursePrefix(lesson)}`;
 }
 
 function isCompleted(p: ProgressEntry): boolean {
@@ -75,7 +76,7 @@ function GradeFolder({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium text-slate-900">
-            {folder.grade === null ? "Other lessons" : `Grade ${folder.grade}`}
+            {folder.grade === null ? "Other lessons" : gradeTitle(folder.grade)}
             {folder.section ? ` · Class ${folder.section}` : ""}
           </span>
           <span className="text-xs text-slate-500">
@@ -278,8 +279,8 @@ export default function TeacherProgressPage() {
             </div>
           ) : (
             <p className="text-sm text-slate-500">
-              You don&apos;t have a lesson in progress. Open your next lesson from
-              the assistant and it will show up here.
+              You don&apos;t have a lesson in progress. Open your next lesson and
+              it will show up here.
             </p>
           )}
         </CardBody>

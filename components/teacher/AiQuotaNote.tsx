@@ -15,11 +15,20 @@ import type { AIQuota } from "@/types";
 // hour or the day has fewer left — because naming both invites doing the
 // arithmetic yourself, and only one of them is the real ceiling right now.
 
-/** Fetches the quota, and re-reads it whenever `refreshKey` changes. */
-export function useAiQuota(refreshKey: unknown) {
+/** Fetches the quota, and re-reads it whenever `refreshKey` changes.
+ *
+ *  `enabled` is false for a teacher without the assistant: they have no
+ *  allowance to spend, and asking for one would be a request per render with
+ *  nowhere to show the answer.
+ */
+export function useAiQuota(refreshKey: unknown, enabled = true) {
   const [quota, setQuota] = useState<AIQuota | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setQuota(null);
+      return;
+    }
     let alive = true;
     getMyAiQuota()
       .then((q) => alive && setQuota(q))
@@ -29,7 +38,7 @@ export function useAiQuota(refreshKey: unknown) {
     return () => {
       alive = false;
     };
-  }, [refreshKey]);
+  }, [refreshKey, enabled]);
 
   return quota;
 }

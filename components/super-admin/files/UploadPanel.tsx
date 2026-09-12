@@ -352,8 +352,9 @@ export function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> | 
 
               <p className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-500">
                 Names must read “Grade 7 micro:bit lesson 04 Step Counter.pdf” — grade, optional
-                course (python / micro:bit), lesson number, then the title. Anything else is stored
-                but assigned to nobody.
+                course (python / micro:bit / MTiny), lesson number, then the title. Kindergarten
+                names itself: “KG1 MTiny lesson 03 Colors.pdf”. Anything else is stored but
+                assigned to nobody.
               </p>
             </div>
           )}

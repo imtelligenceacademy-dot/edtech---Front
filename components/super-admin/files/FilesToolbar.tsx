@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import {
   EMPTY_FILTERS,
   GRADES,
@@ -132,7 +133,7 @@ export function FilesToolbar({
           <option value="all">All grades</option>
           {GRADES.map((g) => (
             <option key={g} value={g}>
-              Grade {g}
+              {gradeTitle(g)}
             </option>
           ))}
         </select>

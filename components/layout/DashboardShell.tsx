@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Role, Session } from "@/types";
 import { getSession } from "@/lib/api";
+import { userCan } from "@/lib/permissions";
 import { Sidebar, hasNavigation } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
@@ -28,6 +29,8 @@ export function DashboardShell({
   // or one holding one link, is a permanent reminder that there is nowhere
   // else to go. The topbar carries the branding instead.
   const navigable = hasNavigation(role);
+  // A kindergarten teacher has no assistant, so the rail must not offer one.
+  const assistant = userCan(session, "use-ai-assistant");
 
   useEffect(() => {
     let alive = true;
@@ -62,7 +65,7 @@ export function DashboardShell({
   return (
     <div className="relative min-h-screen flex overflow-hidden bg-slate-50">
       <div className="relative z-10 flex w-full">
-      {navigable && <Sidebar role={role} />}
+      {navigable && <Sidebar role={role} assistant={assistant} />}
       {navigable && navigationOpen && (
         <>
           <button
@@ -74,6 +77,7 @@ export function DashboardShell({
           <div className="md:hidden">
             <Sidebar
               role={role}
+              assistant={assistant}
               mobile
               onNavigate={() => setNavigationOpen(false)}
             />

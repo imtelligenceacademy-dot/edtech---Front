@@ -3,6 +3,7 @@
 import { ChevronRight, Search, Trash2, X } from "lucide-react";
 import { CardBody, CardHeader } from "@/components/ui/Card";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import {
   EMPTY_LESSON_FILTERS,
   filtersActive,
@@ -260,7 +261,7 @@ export function LessonPicker({
                 <div className="sticky top-0 z-10 flex items-center gap-2 bg-white/95 py-1 backdrop-blur">
                   <TriBox
                     state={stateOf(ids, selected)}
-                    label={`Select every Year ${year} Grade ${grade} lesson`}
+                    label={`Select every Year ${year} ${gradeTitle(grade)} lesson`}
                     onChange={(next) => onToggleMany(ids, next)}
                   />
                   <button

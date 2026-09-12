@@ -5,16 +5,25 @@
 //   /teacher              the grade gate
 //   /teacher/grade-7      the assistant, scoped to grade 7
 //   /teacher/grade-6/6b   the assistant, scoped to one class of grade 6
+//   /teacher/kg-1         kindergarten, which names itself rather than counting
 //   /teacher/ict-fair     the ICT Fair projects (no grade)
 //
 // The class segment appears only for a teacher who takes the same grade more
 // than once. Everyone else goes straight from the grade to their lessons and
 // never sees a class named anywhere.
 
+import { gradeCode, gradeNumber, isKindergarten } from "@/lib/grades";
+
 export const TEACHER_HOME = "/teacher";
 export const TEACHER_FAIR = "/teacher/ict-fair";
 
+// A kindergarten grade is stored below zero, so the URL is built from its token
+// rather than its number: /teacher/kg-1, not /teacher/grade--3.
 export function gradePath(grade: number): string {
+  const code = gradeCode(grade);
+  if (isKindergarten(code)) {
+    return `${TEACHER_HOME}/kg-${code.replace(/^KG/, "")}`;
+  }
   return `${TEACHER_HOME}/grade-${grade}`;
 }
 
@@ -47,15 +56,20 @@ export function sectionsForGrade(
   sections: Record<string, string[]> | undefined,
   grade: number
 ): string[] {
-  return sections?.[`G${grade}`] ?? [];
+  return sections?.[gradeCode(grade)] ?? [];
 }
 
 // Reads the grade out of a URL segment. Tolerant of what someone might type
-// ("grade-7", "grade7", "Grade 7", "7"); null means "not a grade segment".
+// ("grade-7", "grade7", "Grade 7", "7", "kg-1", "KG1"); null means "not a grade
+// segment", which is what keeps /teacher/progress and /teacher/ict-fair from
+// being mistaken for grades.
 export function parseGradeSegment(segment?: string | string[]): number | null {
   const raw = Array.isArray(segment) ? segment[0] : segment;
   if (!raw) return null;
-  const match = decodeURIComponent(raw).match(/^grade[-\s_]?(\d{1,2})$|^(\d{1,2})$/i);
-  const grade = Number(match?.[1] ?? match?.[2]);
-  return Number.isInteger(grade) && grade >= 1 && grade <= 12 ? grade : null;
+  const text = decodeURIComponent(raw).trim();
+  const kg = text.match(/^kg[-\s_]?([123])$/i);
+  if (kg) return gradeNumber(`KG${kg[1]}`);
+  const match = text.match(/^grade[-\s_]?(\d{1,2})$|^(\d{1,2})$/i);
+  if (!match) return null;
+  return gradeNumber(match[1] ?? match[2]);
 }

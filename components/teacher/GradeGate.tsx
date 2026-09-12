@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { GraduationCap, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { gradeCardParts } from "@/lib/grades";
 import { lastTaughtGrade } from "@/lib/teacher/prefs";
 import { classStatusLine, PickCard } from "@/components/teacher/PickCard";
 import type { ClassSummary } from "@/types";
@@ -14,6 +15,7 @@ export function GradeGate({
   classes,
   loading,
   onPick,
+  assistant = true,
   light,
 }: {
   grades: number[];
@@ -21,6 +23,9 @@ export function GradeGate({
   classes: ClassSummary[];
   loading: boolean;
   onPick: (grade: number) => void;
+  /** Whether this teacher has the assistant — a kindergarten teacher does not,
+   *  and should not be told their questions will be scoped to anything. */
+  assistant?: boolean;
   light: boolean;
 }) {
   // Read once on mount: the value changes only by picking a grade, which
@@ -43,8 +48,8 @@ export function GradeGate({
         What grade are we teaching?
       </h1>
       <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
-        Pick the grade for this session — your lessons and the assistant will be
-        scoped to it.
+        Pick the grade for this session — your lessons
+        {assistant ? " and the assistant will be" : " will be"} scoped to it.
       </p>
 
       {loading ? (
@@ -109,10 +114,14 @@ export function GradeCard({
     ? classStatusLine(classes[0])
     : { status: "No lesson open yet", statusIsNext: false, title: undefined };
 
+  // "Grade 6" and "Kindergarten 1" are the same shape on the card, so the two
+  // kinds of grade need no separate treatment here.
+  const { kind, value } = gradeCardParts(grade);
+
   return (
     <PickCard
-      kindLabel="Grade"
-      value={String(grade)}
+      kindLabel={kind}
+      value={value}
       status={line.status}
       statusIsNext={line.statusIsNext}
       title={line.title}

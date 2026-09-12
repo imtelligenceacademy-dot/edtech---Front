@@ -21,6 +21,7 @@ export function ChatHeader({
   onOpenFair,
   showLessonsButton,
   onOpenLessons,
+  assistant = true,
   light,
 }: {
   session: Session | null;
@@ -34,6 +35,9 @@ export function ChatHeader({
    *  button is hidden. */
   showLessonsButton: boolean;
   onOpenLessons: () => void;
+  /** Whether this teacher has the assistant. A kindergarten teacher does not,
+   *  and "Lesson copilot" would be describing something that isn't there. */
+  assistant?: boolean;
   light: boolean;
 }) {
   return (
@@ -72,7 +76,7 @@ export function ChatHeader({
           )}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          Online · Lesson copilot
+          {assistant ? "Online · Lesson copilot" : "Online · Your lessons"}
         </p>
       </div>
       {canStartNewChat && (

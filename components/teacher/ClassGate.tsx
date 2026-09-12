@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import { lastTaughtSection } from "@/lib/teacher/prefs";
 import { classStatusLine, PickCard } from "@/components/teacher/PickCard";
 import type { ClassSummary } from "@/types";
@@ -49,7 +50,7 @@ export function ClassGate({
             : "bg-gradient-to-r from-white via-slate-200 to-slate-400"
         )}
       >
-        Which Grade {grade} class?
+        Which {gradeTitle(grade)} class?
       </h1>
       <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
         Each class keeps its own progress — pick the one in front of you and

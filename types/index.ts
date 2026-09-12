@@ -96,7 +96,7 @@ export interface Lesson {
   schoolId?: string | null;
   language?: "en" | "fr" | null;
   year?: number | null; // curriculum year (1 or 2)
-  course?: string | null; // "python" | "microbit" | null
+  course?: string | null; // "python" | "microbit" | "mtiny" | null
   lessonNo?: number | null;
   fileId?: string | null; // linked PDF, rendered in the lesson viewer
   assignedTeacherIds: string[];

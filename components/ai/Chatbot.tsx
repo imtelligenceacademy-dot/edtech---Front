@@ -16,6 +16,8 @@ import {
   X,
 } from "lucide-react";
 import { cn, stripMarkdown } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
+import { userCan } from "@/lib/permissions";
 import {
   getSession,
   logout,
@@ -115,6 +117,16 @@ export function Chatbot({
   const [sessionLoaded, setSessionLoaded] = useState(false);
   // The teacher experience is light-only.
   const light = true;
+  // Kindergarten runs MTiny, which the assistant has never read, so a teacher
+  // who takes only kindergarten gets the lesson launcher and no conversation.
+  //
+  // Read as "known not to have it" rather than "not known to have it": until
+  // the session lands every teacher is treated as having the assistant, which
+  // is exactly what happened before this existed. Getting it wrong for an
+  // instant costs nothing either way — the server refuses the request on the
+  // same rule, so the composer could not have sent anything regardless.
+  const assistantHidden =
+    sessionLoaded && !userCan(session, "use-ai-assistant");
   const [fullscreenLesson, setFullscreenLesson] = useState<Lesson | null>(null);
   // ICT Fair (shown only to teachers granted access). View-only: a project
   // grid in the main area, and the picked project opens full-screen. No chat
@@ -245,7 +257,7 @@ export function Chatbot({
   // Re-read the allowance once a reply finishes, so the count under the
   // composer reflects the question that was just spent rather than lagging it.
   const answering = thinking || streaming;
-  const quota = useAiQuota(answering);
+  const quota = useAiQuota(answering, !assistantHidden);
 
   // What a question is asked about: the lesson in play and the page on screen.
   const askContext = {
@@ -376,13 +388,16 @@ export function Chatbot({
         ? "The lesson PDF is opening in the mobile viewer."
         : "The lesson PDF is open on the left — ask me anything about it here."
       : `${lesson.slides.length} slides. The deck is open on the left; ask me anything about a slide and I'll explain it here.`;
-    pushAssistant(`Opening "${lesson.title}" — Grade ${lesson.grade}. ${detail}`, {
-      sourceRef: lesson.title,
-      // Tagged with the lesson being opened. The ref still holds the previous
-      // one until React re-renders, and a message filed under the old thread
-      // would vanish the moment the new one takes over.
-      lessonId: lesson.id,
-    });
+    pushAssistant(
+      `Opening "${lesson.title}" — ${gradeTitle(lesson.grade)}. ${detail}`,
+      {
+        sourceRef: lesson.title,
+        // Tagged with the lesson being opened. The ref still holds the previous
+        // one until React re-renders, and a message filed under the old thread
+        // would vanish the moment the new one takes over.
+        lessonId: lesson.id,
+      }
+    );
   }
 
   // "I finished the lesson" — record the open lesson as complete.
@@ -485,6 +500,10 @@ export function Chatbot({
   }
 
   const isEmpty = visibleMessages.length === 0;
+  // The launcher replaces the transcript outright for a teacher without the
+  // assistant: there is no conversation to fall back to, so this screen is
+  // where they open, present and complete their lessons.
+  const showLauncher = assistantHidden || isEmpty;
 
   // The lesson the side panel acts on: whatever is open, else the last one
   // opened - resolved against `lessons` so its access status stays current.
@@ -670,13 +689,15 @@ export function Chatbot({
         <ChatHeader
           session={session}
           canStartNewChat={
-            selectedGrade !== null || messages.length > 0 || showFairProjects
+            !assistantHidden &&
+            (selectedGrade !== null || messages.length > 0 || showFairProjects)
           }
           onNewChat={resetSession}
           showFairProjects={showFairProjects}
           onOpenFair={openFairProjects}
           showLessonsButton={railAvailable}
           onOpenLessons={() => setRailOpen(true)}
+          assistant={!assistantHidden}
           light={light}
         />
 
@@ -695,6 +716,7 @@ export function Chatbot({
               classes={classes}
               loading={!lessonsLoaded}
               onPick={chooseGrade}
+              assistant={!assistantHidden}
               light={light}
             />
           ) : showClassGate ? (
@@ -706,7 +728,7 @@ export function Chatbot({
               onBack={() => router.push(TEACHER_HOME)}
               light={light}
             />
-          ) : isEmpty ? (
+          ) : showLauncher ? (
             <WelcomeScreen
               lessons={gradeLessons}
               grade={selectedGrade}
@@ -714,6 +736,7 @@ export function Chatbot({
               onOpenLesson={openLesson}
               onRequestAccess={(lesson) => requestAccess(lesson, pushAssistant)}
               onPrompt={(text) => send(text)}
+              assistant={!assistantHidden}
               requestedLessonIds={requestedLessonIds}
               light={light}
             />
@@ -782,23 +805,26 @@ export function Chatbot({
           </div>
         )}
 
-        {/* Hidden on the grade gate (the assistant isn't usable until a grade
-            is picked), on the class gate (a question asked before a class is
-            chosen has no lesson behind it, and still spends one of the
-            teacher's hourly questions), and in ICT Fair mode (view-only, no
-            chat). */}
-        {!showFairProjects && selectedGrade !== null && !showClassGate && (
-          <ChatComposer
-            value={input}
-            onChange={setInput}
-            onSend={() => send()}
-            onStop={stopStreaming}
-            busy={thinking || streaming}
-            quota={quota}
-            inputRef={inputRef}
-            light={light}
-          />
-        )}
+        {/* Hidden for a teacher who does not have the assistant at all, on the
+            grade gate (it isn't usable until a grade is picked), on the class
+            gate (a question asked before a class is chosen has no lesson
+            behind it, and still spends one of the teacher's hourly questions),
+            and in ICT Fair mode (view-only, no chat). */}
+        {!assistantHidden &&
+          !showFairProjects &&
+          selectedGrade !== null &&
+          !showClassGate && (
+            <ChatComposer
+              value={input}
+              onChange={setInput}
+              onSend={() => send()}
+              onStop={stopStreaming}
+              busy={thinking || streaming}
+              quota={quota}
+              inputRef={inputRef}
+              light={light}
+            />
+          )}
       </div>
 
       {/* Below xl the rail sits over the chat instead of beside it, and the
@@ -876,7 +902,7 @@ export function Chatbot({
                 {panelLesson.title}
               </p>
               <p className={cn("mt-0.5 text-[11px]", light ? "text-slate-500" : "text-slate-400")}>
-                Grade {panelLesson.grade}
+                {gradeTitle(panelLesson.grade)}
                 {panelLesson.course ? ` · ${courseLabel(panelLesson.course)}` : ""}
                 {viewedSlide ? ` · slide ${viewedSlide}` : ""}
               </p>

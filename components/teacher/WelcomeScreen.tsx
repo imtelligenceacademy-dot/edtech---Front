@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import { byLessonNo, courseLabel, groupLessonsByCourse } from "@/lib/teacher/lesson-order";
 import { formatUnlockDate, STARTER_PROMPTS } from "@/lib/teacher/lesson-copy";
 import type { Lesson, ProgressEntry } from "@/types";
@@ -23,6 +24,7 @@ export function WelcomeScreen({
   onOpenLesson,
   onRequestAccess,
   onPrompt,
+  assistant = true,
   requestedLessonIds,
   light,
 }: {
@@ -32,6 +34,10 @@ export function WelcomeScreen({
   onOpenLesson: (lesson: Lesson) => void;
   onRequestAccess: (lesson: Lesson) => void;
   onPrompt: (text: string) => void;
+  /** Whether this teacher has the assistant. False for a kindergarten teacher,
+   *  for whom this screen is the whole product rather than the thing standing
+   *  in front of a conversation — so it stops offering one. */
+  assistant?: boolean;
   requestedLessonIds: Set<string>;
   light: boolean;
 }) {
@@ -71,16 +77,16 @@ export function WelcomeScreen({
             : "bg-gradient-to-r from-white via-slate-200 to-slate-400"
         )}
       >
-        How can I help you teach today?
+        {assistant ? "How can I help you teach today?" : "Ready to teach?"}
       </h1>
       <p className={cn("mt-3 text-sm", light ? "text-slate-600" : "text-slate-400")}>
-        Teaching <span className="font-medium">Grade {grade}</span>. Open your
-        lesson to present it, or ask me a question.
+        Teaching <span className="font-medium">{gradeTitle(grade)}</span>. Open your
+        lesson to present it{assistant ? ", or ask me a question." : "."}
       </p>
 
       {lessons.length === 0 && (
         <p className={cn("mt-6 text-sm", light ? "text-slate-500" : "text-slate-400")}>
-          No lessons assigned for Grade {grade} yet.
+          No lessons assigned for {gradeTitle(grade)} yet.
         </p>
       )}
 
@@ -129,7 +135,7 @@ export function WelcomeScreen({
       )}
 
       {/* Openers, so the assistant isn't a blank box. */}
-      {lessons.length > 0 && (
+      {assistant && lessons.length > 0 && (
         <div className="mt-5 flex w-full flex-wrap justify-center gap-2">
           {STARTER_PROMPTS.map((prompt) => (
             <button

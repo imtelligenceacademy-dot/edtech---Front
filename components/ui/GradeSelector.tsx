@@ -2,11 +2,11 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ALL_GRADE_CODES, GRADE_OPTIONS } from "@/lib/grades";
+import { ALL_GRADE_CODES, GRADE_OPTIONS, KG_CODES } from "@/lib/grades";
 
 const PRESETS: { label: string; codes: string[] }[] = [
   { label: "All grades", codes: ALL_GRADE_CODES },
-  { label: "Kindergarten", codes: ["KG1", "KG2"] },
+  { label: "Kindergarten", codes: KG_CODES },
   { label: "Grades 1–6", codes: ["G1", "G2", "G3", "G4", "G5", "G6"] },
   { label: "Grades 7–12", codes: ["G7", "G8", "G9", "G10", "G11", "G12"] },
 ];

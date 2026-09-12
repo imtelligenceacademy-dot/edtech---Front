@@ -6,6 +6,7 @@
 //
 // Pure functions only — the page owns the state, this owns the arithmetic.
 
+import { ALL_GRADE_NUMBERS } from "@/lib/grades";
 import { COURSE_ORDER, courseLabel } from "@/lib/teacher/lesson-order";
 import type { Lesson, UploadedFile } from "@/types";
 
@@ -52,7 +53,10 @@ export const EMPTY_FILTERS: Filters = {
 };
 
 export const YEARS = [1, 2] as const;
-export const GRADES = Array.from({ length: 12 }, (_, i) => i + 1); // 1..12
+// Every grade a lesson may be filed under, as stored — kindergarten first.
+// Kindergarten is negative (see lib/grades), so this is the canonical order
+// rather than a range.
+export const GRADES = ALL_GRADE_NUMBERS;
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;

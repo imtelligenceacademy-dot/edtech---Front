@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BookOpen,
   LayoutDashboard,
   School,
   Users,
@@ -50,6 +51,15 @@ const navByRole: Record<Role, NavItem[]> = {
   ],
 };
 
+// The same destination, named for what a teacher without the assistant finds
+// there. BookOpen rather than Sparkles for the same reason: the icon is the
+// promise the label is making.
+const TEACHER_LESSONS: NavItem = {
+  href: "/teacher",
+  label: "Your lessons",
+  icon: BookOpen,
+};
+
 /** Whether this role has more than one destination, and so needs a sidebar. */
 export function hasNavigation(role: Role): boolean {
   return navByRole[role].length > 0;
@@ -57,15 +67,21 @@ export function hasNavigation(role: Role): boolean {
 
 export function Sidebar({
   role,
+  assistant = true,
   mobile = false,
   onNavigate,
 }: {
   role: Role;
+  /** Whether this teacher has the assistant. A kindergarten teacher does not,
+   *  and the first link would otherwise offer them one. */
+  assistant?: boolean;
   mobile?: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navByRole[role];
+  const items = navByRole[role].map((item) =>
+    !assistant && item.label === "AI Assistant" ? TEACHER_LESSONS : item
+  );
 
   return (
     <aside

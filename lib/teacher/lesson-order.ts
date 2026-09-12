@@ -5,7 +5,14 @@ import type { Lesson } from "@/types";
 // Relative order of courses within a grade/language track — mirrors the
 // backend COURSE_ORDER so the whole track reads as one linear sequence
 // (all python lessons, then all micro:bit lessons).
-export const COURSE_ORDER: Record<string, number> = { python: 1, microbit: 2 };
+// MTiny shares a number with python because it never shares a track with it:
+// kindergarten is its own grade, so an MTiny track orders by lesson number
+// alone.
+export const COURSE_ORDER: Record<string, number> = {
+  python: 1,
+  mtiny: 1,
+  microbit: 2,
+};
 export function courseOrder(l: Lesson): number {
   return COURSE_ORDER[l.course ?? ""] ?? 0;
 }
@@ -23,6 +30,7 @@ export function byLessonNo(a: Lesson, b: Lesson): number {
 export function courseLabel(course?: string | null): string {
   if (course === "python") return "Python";
   if (course === "microbit") return "micro:bit";
+  if (course === "mtiny") return "MTiny";
   return "Lessons";
 }
 
@@ -45,10 +53,14 @@ export function groupLessonsByCourse(
 }
 
 // Strip the "Grade N Lesson NN" prefix to get the descriptive part, e.g.
-// "Grade 7 Lesson 03 Buzzer" -> "buzzer".
+// "Grade 7 Lesson 03 Buzzer" -> "buzzer", "KG1 MTiny lesson 03 Colors" ->
+// "colors".
 export function descriptivePart(title: string): string {
   return title
-    .replace(/^grade\s*\d+\s*(?:python|micro:?bit)?\s*lesson\s*\d+\s*/i, "")
+    .replace(
+      /^(?:grade\s*\d+|kg\s?[123])\s*(?:python|micro:?bit|m\s?tiny)?\s*lesson\s*\d+\s*/i,
+      ""
+    )
     .trim()
     .toLowerCase();
 }

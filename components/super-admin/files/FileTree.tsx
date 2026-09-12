@@ -4,6 +4,7 @@ import { ChevronRight, Download, Folder, FolderOpen, Loader2 } from "lucide-reac
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import {
   idsOf,
   langLabel,
@@ -254,17 +255,17 @@ export function FileTree({ tree, h }: { tree: Tree; h: TreeHandlers }) {
                         checkbox={
                           <GroupCheckbox
                             state={selectionStateOf(grade.nodes, h.selected)}
-                            label={`Select every file in Grade ${grade.grade}`}
+                            label={`Select every file in ${gradeTitle(grade.grade)}`}
                             onChange={(next) => h.onToggleGroup(gradeIds, next)}
                           />
                         }
-                        title={`Grade ${grade.grade}`}
+                        title={gradeTitle(grade.grade)}
                         meta={counts(grade.nodes)}
                         actions={
                           <DownloadGroupButton
                             count={gradeIds.length}
                             busy={h.downloading === gradeKey}
-                            what={`Grade ${grade.grade}`}
+                            what={gradeTitle(grade.grade)}
                             onClick={() =>
                               h.onDownloadGroup(gradeIds, `year-${year.year}-grade-${grade.grade}`)
                             }

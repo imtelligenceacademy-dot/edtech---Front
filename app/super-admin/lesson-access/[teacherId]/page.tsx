@@ -17,7 +17,7 @@ import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { getTeacherAccess, resetTeacherProgress, setLessonOverride } from "@/lib/api";
-import { summarizeGrades } from "@/lib/grades";
+import { gradeTitle, summarizeGrades } from "@/lib/grades";
 import type { LessonAccessStatus, TeacherAccess } from "@/types";
 
 const STATUS_META: Record<
@@ -224,7 +224,7 @@ export default function TeacherLessonAccessPage() {
           <Card key={`${track.grade}-${track.section}-${track.language ?? ""}`}>
             <CardHeader
               title={
-                `Grade ${track.grade}` +
+                gradeTitle(track.grade) +
                 (track.section ? ` · Class ${track.section}` : "") +
                 (track.language ? ` · ${track.language.toUpperCase()}` : "")
               }
