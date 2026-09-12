@@ -23,6 +23,7 @@ export function LessonPane({
   width,
   chatCollapsed,
   onToggleChat,
+  assistant = true,
   current,
   onPrev,
   onNext,
@@ -39,6 +40,10 @@ export function LessonPane({
   width: number;
   chatCollapsed: boolean;
   onToggleChat: () => void;
+  /** Whether this teacher has the assistant. Without it the lesson has the
+   *  screen to itself, so there is nothing to fold away and nothing to fold
+   *  back. */
+  assistant?: boolean;
   current: number;
   onPrev: () => void;
   onNext: () => void;
@@ -132,19 +137,21 @@ export function LessonPane({
             <Maximize2 size={13} /> Full screen
           </button>
         )}
-        <button
-          onClick={onToggleChat}
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg transition",
-            light
-              ? "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-              : "text-slate-400 hover:bg-white/5 hover:text-white"
-          )}
-          aria-label={chatCollapsed ? "Show the assistant" : "Hide the assistant"}
-          title={chatCollapsed ? "Show the assistant" : "Hide the assistant"}
-        >
-          {chatCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
-        </button>
+        {assistant && (
+          <button
+            onClick={onToggleChat}
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-lg transition",
+              light
+                ? "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                : "text-slate-400 hover:bg-white/5 hover:text-white"
+            )}
+            aria-label={chatCollapsed ? "Show the assistant" : "Hide the assistant"}
+            title={chatCollapsed ? "Show the assistant" : "Hide the assistant"}
+          >
+            {chatCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+          </button>
+        )}
         <button
           onClick={onClose}
           className={cn(
@@ -231,7 +238,9 @@ export function LessonPane({
             light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-500"
           )}
         >
-          {chatCollapsed
+          {!assistant
+            ? "Scroll the PDF to move through the lesson"
+            : chatCollapsed
             ? "Presenting full width · reopen the assistant from the header"
             : "Scroll the PDF on the left · ask the AI on the right about it"}
         </div>

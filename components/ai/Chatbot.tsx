@@ -182,8 +182,13 @@ export function Chatbot({
   } = useTeacherLessons(session, section);
 
   // How the lesson viewer and the assistant share the screen.
+  // An open lesson takes the whole screen either because the teacher folded the
+  // conversation away to present, or because they never had one to fold: with
+  // no assistant there is nothing on the right but a launcher for the lesson
+  // already open.
   const { paneWidth, setPaneWidth, chatCollapsed, setChatCollapsed, startPaneDrag } =
     useLessonSplit();
+  const lessonFullWidth = chatCollapsed || assistantHidden;
 
   // The lesson on the classroom's second screen, if there is one. It runs
   // before the conversation because presenting decides which lesson is in play,
@@ -624,9 +629,10 @@ export function Chatbot({
         <LessonPane
           lesson={openedLesson}
           section={section}
-          width={chatCollapsed ? 100 : paneWidth}
+          width={lessonFullWidth ? 100 : paneWidth}
           chatCollapsed={chatCollapsed}
           onToggleChat={() => setChatCollapsed((v) => !v)}
+          assistant={!assistantHidden}
           current={openedSlide}
           onPrev={() => setOpenedSlide((s) => Math.max(1, s - 1))}
           onNext={() =>
@@ -646,8 +652,9 @@ export function Chatbot({
         />
       )}
 
-      {/* Drag handle between the lesson and the chat (desktop layout only) */}
-      {openedLesson && !chatCollapsed && (
+      {/* Drag handle between the lesson and the chat (desktop layout only).
+          Nothing to drag when the lesson has the screen to itself. */}
+      {openedLesson && !lessonFullWidth && (
         <div
           onMouseDown={startPaneDrag}
           onDoubleClick={() => setPaneWidth(60)}
@@ -679,11 +686,19 @@ export function Chatbot({
         <FairFullscreen project={fairViewer} onClose={() => setFairViewer(null)} />
       )}
 
-      {/* Chat column — folded away while presenting full-width */}
+      {/* Chat column — folded away while presenting full-width.
+          For a teacher with no assistant it goes only from md up, where the
+          lesson pane exists to replace it. Below md that pane is not rendered
+          at all (the phone reads a lesson in the full-screen viewer), so
+          hiding this as well would leave them looking at nothing. */}
       <div
         className={cn(
           "relative z-10 h-full min-h-0 min-w-0 flex-1 flex-col",
-          openedLesson && chatCollapsed ? "hidden" : "flex"
+          openedLesson && chatCollapsed
+            ? "hidden"
+            : openedLesson && assistantHidden
+            ? "flex md:hidden"
+            : "flex"
         )}
       >
         <ChatHeader
@@ -944,7 +959,7 @@ export function Chatbot({
                 >
                   <Maximize2 size={13} /> Full screen
                 </button>
-                {contextLessonId && (
+                {contextLessonId && !assistantHidden && (
                   <button
                     onClick={() => clearThread(pushAssistant)}
                     className={cn(
