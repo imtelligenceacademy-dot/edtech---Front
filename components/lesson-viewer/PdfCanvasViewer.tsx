@@ -34,6 +34,7 @@ export function PdfCanvasViewer({
   onSlideChange,
   onReady,
   bare = false,
+  outerChrome = false,
   goToPage,
 }: {
   fileId: string;
@@ -54,6 +55,11 @@ export function PdfCanvasViewer({
   // the teacher's chrome (no zoom toolbar, no progress bar) for the class to
   // read. Scrolling still works — that is how the teacher drives the lesson.
   bare?: boolean;
+  // True when whatever is around this already names the document and offers a
+  // way out of it. The phone's fallback then drops its own bar rather than
+  // repeating both — two headers stacked on a small screen cost a fifth of it
+  // to say the same thing twice, with two buttons that did the same thing.
+  outerChrome?: boolean;
   // Scroll a page into view on command. Changing the value is the instruction;
   // the teacher's controls use it to jump the projector to a page.
   goToPage?: number;
@@ -326,17 +332,19 @@ export function PdfCanvasViewer({
   if (useNativeMobileViewer) {
     return (
       <div className="relative flex h-full flex-col">
-        <div className={cn("flex items-center justify-between gap-2 border-b px-3 py-2 text-xs", light ? "border-slate-200/60 text-slate-600" : "border-white/5 text-slate-300")}>
-          <span>Mobile PDF viewer</span>
-          {onExit && (
-            <button
-              onClick={onExit}
-              className={cn("inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition", light ? "border-slate-200 bg-white text-slate-700" : "border-white/10 bg-white/5 text-slate-200")}
-            >
-              <ArrowLeft size={13} /> Back
-            </button>
-          )}
-        </div>
+        {!outerChrome && (
+          <div className={cn("flex items-center justify-between gap-2 border-b px-3 py-2 text-xs", light ? "border-slate-200/60 text-slate-600" : "border-white/5 text-slate-300")}>
+            <span>Mobile PDF viewer</span>
+            {onExit && (
+              <button
+                onClick={onExit}
+                className={cn("inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 transition", light ? "border-slate-200 bg-white text-slate-700" : "border-white/10 bg-white/5 text-slate-200")}
+              >
+                <ArrowLeft size={13} /> Back
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5 text-center">
           {nativeStatus === "loading" && (
@@ -362,7 +370,10 @@ export function PdfCanvasViewer({
           {nativeStatus === "ready" && nativeUrl && (
             <>
               <p className={light ? "max-w-sm text-sm text-slate-600" : "max-w-sm text-sm text-slate-300"}>
-                Open the lesson with your phone&apos;s PDF viewer.
+                {/* An ICT Fair project is not a lesson, and this same
+                    fallback serves both. */}
+                Open the {lessonId ? "lesson" : "project"} with your
+                phone&apos;s PDF viewer.
               </p>
               <a
                 href={nativeUrl}

@@ -104,7 +104,13 @@ export function FairFullscreen({
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        <PdfCanvasViewer fileId={project.fileId as string} light onExit={onClose} />
+        {/* outerChrome: the header above names the project and exits it. */}
+        <PdfCanvasViewer
+          fileId={project.fileId as string}
+          light
+          onExit={onClose}
+          outerChrome
+        />
       </div>
     </div>
   );

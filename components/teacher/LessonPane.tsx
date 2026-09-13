@@ -351,6 +351,8 @@ export function FullscreenPdf({
           accessStatus={lesson.accessStatus}
           onExit={onClose}
           onCompleted={onCompleted}
+          // The header above already carries the lesson's name and the way out.
+          outerChrome
         />
       </div>
     </div>
