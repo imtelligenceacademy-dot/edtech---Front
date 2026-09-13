@@ -47,7 +47,7 @@ export function SecurityLogTable({ logs }: { logs: SecurityLog[] }) {
             <thead>
               <tr className={cn("text-left text-[11px] uppercase tracking-wider", muted)}>
                 {["User", "Event", "Where from", "Device", "Time", ""].map((h) => (
-                  <th key={h} className="px-4 py-2.5 font-medium">
+                  <th key={h} className="whitespace-nowrap px-4 py-2.5 font-medium">
                     {h}
                   </th>
                 ))}
@@ -61,7 +61,12 @@ export function SecurityLogTable({ logs }: { logs: SecurityLog[] }) {
                   className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{l.userName}</div>
+                    {/* The table already scrolls sideways; letting a name wrap
+                        instead bought nothing and cost four lines a row, since
+                        "Fatima Al-Hassan Abou Khalil" broke a word at a time. */}
+                    <div className="whitespace-nowrap font-medium text-slate-900">
+                      {l.userName}
+                    </div>
                     <div className={cn("text-xs capitalize", muted)}>
                       {l.role?.replace("-", " ") ?? "—"}
                     </div>

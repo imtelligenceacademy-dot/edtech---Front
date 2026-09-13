@@ -14,7 +14,7 @@ import {
   listSchools,
   listUsers,
 } from "@/lib/api";
-import { summarizeGrades } from "@/lib/grades";
+import { gradeTitle, summarizeGrades } from "@/lib/grades";
 import type { AccessRequest, School, User } from "@/types";
 
 // Index for the per-teacher lesson-unlock pages. Picking a teacher opens their
@@ -92,14 +92,23 @@ export default function LessonAccessIndexPage() {
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
                   <BellRing size={16} />
                 </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">
+                {/* basis-64: `flex-1` alone has a basis of zero, so this block
+                    shrank instead of pushing the buttons onto their own line.
+                    On a phone that left it about 100px wide — a column of
+                    single words, with the lesson title clipped out of sight
+                    entirely, so the admin could not see what they were being
+                    asked to unlock. */}
+                <div className="min-w-0 flex-1 basis-64">
+                  {/* Truncated to one line where there is room for one, and
+                      wrapped where there is not: which lesson this is about is
+                      the whole point of the row. */}
+                  <div className="text-sm sm:truncate">
                     <span className="font-medium text-slate-900">{r.teacherName}</span>
                     <span className="text-slate-500"> requested </span>
                     <span className="font-medium text-slate-900">{r.lessonTitle}</span>
                   </div>
                   <div className="text-xs text-slate-500">
-                    Grade {r.grade}
+                    {gradeTitle(r.grade)}
                     {/* Which class is stuck. Granting unlocks that one only,
                         so the admin has to be able to see which it is. */}
                     {r.section ? ` · Class ${r.section}` : ""}

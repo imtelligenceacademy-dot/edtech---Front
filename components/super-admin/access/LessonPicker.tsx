@@ -3,7 +3,7 @@
 import { ChevronRight, Search, Trash2, X } from "lucide-react";
 import { CardBody, CardHeader } from "@/components/ui/Card";
 import { cn } from "@/lib/utils";
-import { gradeTitle } from "@/lib/grades";
+import { gradeCode, gradeTitle } from "@/lib/grades";
 import {
   EMPTY_LESSON_FILTERS,
   filtersActive,
@@ -194,7 +194,7 @@ export function LessonPicker({
                   : "border-slate-200 text-slate-600 hover:bg-slate-50"
               )}
             >
-              G{g}
+              {gradeCode(g)}
               <span className="ml-1 text-[10px] text-slate-400">{gradeCounts.get(g)}</span>
             </button>
           ))}
@@ -274,7 +274,7 @@ export function LessonPicker({
                     />
                     <span className="text-brand-700">Year {year}</span>
                     <span className="text-slate-300">·</span>
-                    Grade {grade}
+                    {gradeTitle(grade)}
                     <span className="text-slate-400">({groupLessons.length})</span>
                   </button>
                 </div>
@@ -310,7 +310,7 @@ export function LessonPicker({
                               {l.title}
                             </span>
                             <span className="block text-xs text-slate-500">
-                              Year {yearOf(l)} · Grade {l.grade}
+                              Year {yearOf(l)} · {gradeTitle(l.grade)}
                               {l.language ? ` · ${l.language.toUpperCase()}` : ""} ·{" "}
                               {l.assignedTeacherIds.length} teacher
                               {l.assignedTeacherIds.length === 1 ? "" : "s"}

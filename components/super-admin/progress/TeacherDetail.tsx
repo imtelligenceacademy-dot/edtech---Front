@@ -2,6 +2,7 @@
 
 import { ArrowLeft, BookOpen, Check, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { gradeTitle } from "@/lib/grades";
 import { MeterLegend, ProgressMeter, STATE_DOT } from "./ProgressMeter";
 import {
   STATE_LABEL,
@@ -113,7 +114,7 @@ function CurrentlyOn({ teacher }: { teacher: TeacherProgress }) {
           <BookOpen size={15} className="mt-0.5 shrink-0 text-brand-600" />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-slate-900">
-              Grade {lesson.grade}
+              {gradeTitle(lesson.grade)}
               {lesson.section ? ` · Class ${lesson.section}` : ""}
               {lesson.lessonNo !== null ? ` · Lesson ${lesson.lessonNo}` : ""} —{" "}
               {lesson.title}
@@ -247,7 +248,7 @@ export function TeacherDetail({
               {/* A heading, not a folder. Nothing collapses. */}
               <h3 className="flex items-center gap-2 bg-slate-50/80 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 sm:px-5">
                 <Circle size={6} className="fill-slate-300 text-slate-300" />
-                Grade {track.grade}
+                {gradeTitle(track.grade)}
                 {track.section && (
                   <span className="text-slate-400">· Class {track.section}</span>
                 )}

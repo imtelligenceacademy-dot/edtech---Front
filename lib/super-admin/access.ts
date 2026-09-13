@@ -6,6 +6,7 @@
 //
 // Pure functions only — the page owns the state.
 
+import { gradeCode } from "@/lib/grades";
 import type { Lesson, User } from "@/types";
 
 export type Coverage = "all" | "some" | "none";
@@ -46,7 +47,10 @@ export function yearOf(lesson: Lesson): number {
  */
 export function autoMatches(lesson: Lesson, teacher: User): boolean {
   if (teacher.role !== "teacher") return false;
-  const gradeOk = (teacher.grades ?? []).includes(`G${lesson.grade}`);
+  // gradeCode, not `G${grade}`: kindergarten is stored below zero, so the
+  // hand-built token was "G-3" and could never match the "KG1" a teacher
+  // holds — every kindergarten teacher looked unmatched by the upload rules.
+  const gradeOk = (teacher.grades ?? []).includes(gradeCode(lesson.grade));
   const lang = lesson.language ?? null;
   const tlang = teacher.language ?? null;
   const langOk = !lang || tlang === lang || tlang === "both";
@@ -101,18 +105,24 @@ export type TrackGroup = {
  * has to be opened.
  */
 export function groupByTrack(lessons: Lesson[]): TrackGroup[] {
-  const groups = new Map<string, Lesson[]>();
+  // The year and grade are carried alongside the bucket rather than parsed
+  // back out of its key. Splitting "2--3" on "-" read a kindergarten grade as
+  // 0, so every KG group was headed "Grade 0" and its filter chip said "G0".
+  const groups = new Map<string, { year: number; grade: number; lessons: Lesson[] }>();
   for (const l of lessons) {
-    const key = `${yearOf(l)}-${l.grade}`;
-    const bucket = groups.get(key) ?? [];
+    const year = yearOf(l);
+    const key = `${year}:${l.grade}`;
+    const bucket = groups.get(key) ?? { year, grade: l.grade, lessons: [] };
     groups.set(key, bucket);
-    bucket.push(l);
+    bucket.lessons.push(l);
   }
   return Array.from(groups.entries())
-    .map(([key, list]) => {
-      const [year, grade] = key.split("-").map(Number);
-      return { key, year, grade, lessons: [...list].sort(byLessonNo) };
-    })
+    .map(([key, { year, grade, lessons: list }]) => ({
+      key,
+      year,
+      grade,
+      lessons: [...list].sort(byLessonNo),
+    }))
     .sort((a, b) => a.year - b.year || a.grade - b.grade);
 }
 

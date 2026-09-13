@@ -209,7 +209,9 @@ export default function SuperAdminAiUsagePage() {
                   value={schoolId}
                   onChange={(e) => setSchoolId(e.target.value)}
                   aria-label="Filter by school"
-                  className="h-10 rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                  // min-w-0: a long school name would otherwise size this
+                  // select past the width of a phone (see the accounts page).
+                  className="h-10 min-w-0 max-w-full rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                 >
                   <option value="">All schools</option>
                   {schools.map((s) => (

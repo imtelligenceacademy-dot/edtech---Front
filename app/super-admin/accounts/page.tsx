@@ -353,7 +353,11 @@ export default function AccountsPage() {
         <select
           value={schoolFilter}
           onChange={(e) => setSchoolFilter(e.target.value)}
-          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          // A school's name is whatever it was typed as, and min-width:auto
+          // sizes a select to its longest option — so one long name made this
+          // wider than a phone, with the right of it off the screen and no way
+          // to scroll to it. Shrinking is allowed; the name truncates instead.
+          className="h-9 min-w-0 max-w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         >
           <option value="all">All schools</option>
           {schools.map((s) => (
