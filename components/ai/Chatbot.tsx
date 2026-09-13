@@ -238,7 +238,10 @@ export function Chatbot({
     if (openedLesson) return openedLesson;
     if (presenting) return presenting.lesson;
     const isOpenable = (l: Lesson) => (l.accessStatus ?? "available") === "available";
-    const last = lastLesson ? lessons.find((l) => l.id === lastLesson.id) : undefined;
+    // Searched within this grade, not the whole assignment list: the lesson
+    // last opened may belong to another grade entirely, and grounding a Grade 5
+    // question in it filed the answer under Grade 5's neighbour.
+    const last = lastLesson ? gradeLessons.find((l) => l.id === lastLesson.id) : undefined;
     if (last && isOpenable(last)) return last;
     return [...gradeLessons].sort(byLessonNo).find(isOpenable) ?? null;
   })();
@@ -343,11 +346,23 @@ export function Chatbot({
   // The restored lesson id only becomes a Lesson once the list has loaded.
   useEffect(() => {
     const id = pendingLessonIdRef.current;
-    if (!id || lessons.length === 0) return;
+    if (!id || lessons.length === 0 || selectedGrade === null) return;
     pendingLessonIdRef.current = null;
     const match = lessons.find((l) => l.id === id);
-    if (match) setLastLesson(match);
-  }, [lessons]);
+    // Only into the grade it belongs to. Remembered across a refresh, it would
+    // otherwise open on whichever grade the teacher happened to arrive at.
+    if (!match || match.grade !== selectedGrade) return;
+    setLastLesson(match);
+    // Opened, not just remembered. Coming back to a lesson and finding a
+    // conversation about it — with the lesson itself nowhere on screen — is
+    // the transcript without the thing it is about. Only while it is still
+    // theirs to open: an admin may have locked it since, and a completed one
+    // is finished.
+    if ((match.accessStatus ?? "available") === "available") {
+      setOpenedLesson(match);
+      setOpenedSlide(1);
+    }
+  }, [lessons, selectedGrade]);
 
   useEffect(() => {
     getSession()
@@ -517,7 +532,16 @@ export function Chatbot({
   // The launcher replaces the transcript outright for a teacher without the
   // assistant: there is no conversation to fall back to, so this screen is
   // where they open, present and complete their lessons.
-  const showLauncher = assistantHidden || isEmpty;
+  //
+  // It also stays up until a lesson has actually been opened. A question is
+  // grounded in the lesson a teacher is up to whether or not they have opened
+  // it, so arriving at a grade pulled that lesson's stored thread and put the
+  // transcript on screen straight away — no lesson open, and the one screen
+  // that offers to open one replaced by a conversation about it.
+  const openedHereBefore =
+    !!lastLesson && gradeLessons.some((l) => l.id === lastLesson.id);
+  const noLessonOpenedYet = !openedLesson && !openedHereBefore;
+  const showLauncher = assistantHidden || isEmpty || noLessonOpenedYet;
 
   // The lesson the side panel acts on: whatever is open, else the last one
   // opened - resolved against `lessons` so its access status stays current.

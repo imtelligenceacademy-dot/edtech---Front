@@ -3,6 +3,8 @@
 // Small per-browser preferences for the teacher surface. All of it is best
 // effort: storage can be disabled, and nothing here is worth an error.
 
+import { ALL_GRADE_NUMBERS } from "@/lib/grades";
+
 // The lesson in play is remembered per tab so a refresh mid-class doesn't lose
 // it. The conversation itself lives on the server, one thread per lesson.
 export const CHAT_STATE_KEY = "imt_teacher_chat_v1";
@@ -31,8 +33,13 @@ export function rememberGrade(grade: number) {
 
 export function lastTaughtGrade(): number | null {
   try {
-    const value = Number(window.localStorage.getItem(LAST_GRADE_KEY));
-    return Number.isInteger(value) && value > 0 ? value : null;
+    const raw = window.localStorage.getItem(LAST_GRADE_KEY);
+    if (!raw) return null;
+    // Checked against the grades that exist rather than "greater than zero":
+    // kindergarten is stored below zero, so the old test threw away every KG
+    // grade and those teachers were never shown which one they last taught.
+    const value = Number(raw);
+    return ALL_GRADE_NUMBERS.includes(value) ? value : null;
   } catch {
     return null;
   }
