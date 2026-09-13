@@ -7,6 +7,13 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // A landscape phone: wide enough that the lesson viewer and the chat sit
+      // side by side, but only a few hundred pixels tall — so the chrome that
+      // is comfortable on a laptop leaves the lesson itself a sliver. Keyed on
+      // height, because width is not what is scarce here.
+      screens: {
+        short: { raw: "(max-height: 640px)" },
+      },
       colors: {
         brand: {
           DEFAULT: "#0099B3",

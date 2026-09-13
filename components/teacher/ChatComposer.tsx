@@ -103,14 +103,15 @@ export function ChatComposer({
         </div>
         <p
           className={cn(
-            "mt-2 text-center text-[11px]",
+            "mt-2 text-center text-[11px] short:mt-1",
             light ? "text-slate-500" : "text-slate-500"
           )}
         >
           {/* Keyboard advice only where there is a keyboard. On a phone these
               two lines cost a fifth of the screen to describe keys that are not
-              there, pushing the lesson itself out of view. */}
-          <span className="hidden sm:inline">
+              there, pushing the lesson itself out of view. A phone held
+              sideways is wide, so `short` has to say it as well as `sm`. */}
+          <span className="hidden sm:inline short:hidden">
             Press{" "}
             <kbd
               className={cn("rounded px-1 py-0.5", light ? "bg-slate-200/60" : "bg-white/5")}

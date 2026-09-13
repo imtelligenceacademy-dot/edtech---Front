@@ -72,10 +72,13 @@ export function LessonPane({
       <div
         className={cn(
           "flex items-center gap-3 border-b px-5 py-4",
+          // On a landscape phone the header, the zoom bar, the progress bar and
+          // the hint below them took more of the screen than the lesson did.
+          "short:gap-2 short:px-3 short:py-1.5",
           light ? "border-slate-200/60" : "border-white/5"
         )}
       >
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-brand shadow-lg shadow-sky-500/20">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-brand shadow-lg shadow-sky-500/20 short:h-7 short:w-7">
           <Presentation size={16} className="text-white" />
         </div>
         <div className="flex-1 min-w-0">
@@ -87,9 +90,11 @@ export function LessonPane({
           >
             {lesson.title}
           </p>
+          {/* The grade and kind are worth a line on a laptop and worth the
+              lesson's own pixels on a phone held sideways. */}
           <p
             className={cn(
-              "text-[11px]",
+              "text-[11px] short:hidden",
               light ? "text-slate-500" : "text-slate-400"
             )}
           >
@@ -232,18 +237,22 @@ export function LessonPane({
 
       {/* Controls — slide navigation only applies to deck lessons */}
       {isPdf ? (
-        <div
-          className={cn(
-            "flex items-center justify-center border-t px-5 py-3 text-[11px]",
-            light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-500"
-          )}
-        >
-          {!assistant
-            ? "Scroll the PDF to move through the lesson"
-            : chatCollapsed
-            ? "Presenting full width · reopen the assistant from the header"
-            : "Scroll the PDF on the left · ask the AI on the right about it"}
-        </div>
+        // Only while there is something to describe. Folded away for
+        // presenting there is no chat on the right to point at, and on a short
+        // screen a hint is not worth a row of a lesson a class is waiting to
+        // see — either way the row goes rather than saying something untrue.
+        !chatCollapsed && (
+          <div
+            className={cn(
+              "flex items-center justify-center border-t px-5 py-3 text-[11px] short:hidden",
+              light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-500"
+            )}
+          >
+            {assistant
+              ? "Scroll the PDF on the left · ask the AI on the right about it"
+              : "Scroll the PDF to move through the lesson"}
+          </div>
+        )
       ) : (
         <div
           className={cn(

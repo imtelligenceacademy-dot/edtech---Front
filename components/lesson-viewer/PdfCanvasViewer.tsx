@@ -439,7 +439,7 @@ export function PdfCanvasViewer({
     <div className={cn("relative flex h-full flex-col", bare && "bg-black")}>
       {/* Zoom toolbar (no download/print/save) — never on the classroom screen */}
       {!bare && (
-      <div className={cn("flex items-center justify-center gap-2 border-b px-3 py-1.5 text-xs", light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-400")}>
+      <div className={cn("flex items-center justify-center gap-2 border-b px-3 py-1.5 text-xs short:py-0", light ? "border-slate-200/60 text-slate-500" : "border-white/5 text-slate-400")}>
         <button className={barBtn} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))} aria-label="Zoom out">
           <ZoomOut size={14} />
         </button>
@@ -457,14 +457,14 @@ export function PdfCanvasViewer({
         onDragStart={(e) => e.preventDefault()}
         className={cn(
           "chat-scroll flex-1 select-none overflow-auto",
-          bare ? "px-0 py-0" : "px-4 py-4"
+          bare ? "px-0 py-0" : "px-4 py-4 short:px-2 short:py-1"
         )}
         style={{ userSelect: "none" }}
       />
 
       {/* Self-reported progress bar — the teacher's window only */}
       {lessonId && !bare && status === "ready" && (
-        <div className={cn("flex flex-wrap items-center gap-3 border-t px-4 py-2.5 text-xs", light ? "border-slate-200/60" : "border-white/5")}>
+        <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-4 py-2.5 text-xs short:px-3 short:py-1", light ? "border-slate-200/60" : "border-white/5")}>
           <span className={light ? "text-slate-600" : "text-slate-300"}>
             You&apos;re on <strong>slide {current}</strong> of {total}
           </span>
