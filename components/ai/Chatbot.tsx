@@ -755,7 +755,7 @@ export function Chatbot({
         <div
           ref={scrollRef}
           onScroll={onTranscriptScroll}
-          className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
+          className="chat-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 short:py-2"
         >
           {showFairProjects ? (
             <FairProjectsScreen sections={fairSections} onOpen={openFairProject} />
@@ -790,7 +790,7 @@ export function Chatbot({
               light={light}
             />
           ) : (
-            <div className="mx-auto flex max-w-3xl flex-col gap-6">
+            <div className="mx-auto flex max-w-3xl flex-col gap-6 short:gap-3">
               {visibleMessages.map((m) => (
                 <MessageBubble key={m.id} message={m} light={light} />
               ))}

@@ -48,6 +48,9 @@ export function ChatHeader({
     <div
       className={cn(
         "relative z-30 flex items-center gap-2 border-b px-3 py-4 backdrop-blur-xl sm:gap-3 sm:px-6",
+        // A phone held sideways is wide enough to show every label at full
+        // size, and too short to afford any of them.
+        "short:gap-1.5 short:py-1.5 short:sm:px-3",
         light ? "border-slate-200/60 bg-white/70" : "border-white/5 bg-slate-950/40"
       )}
     >
@@ -55,7 +58,7 @@ export function ChatHeader({
         <img
           src="/logo.png"
           alt="IM-Telligence"
-          className="h-9 w-9 rounded-full bg-white object-contain p-0.5"
+          className="h-9 w-9 rounded-full bg-white object-contain p-0.5 short:h-7 short:w-7"
         />
         <div
           className={cn(
@@ -75,7 +78,7 @@ export function ChatHeader({
         </p>
         <p
           className={cn(
-            "hidden items-center gap-1.5 truncate text-[11px] sm:flex",
+            "hidden items-center gap-1.5 truncate text-[11px] sm:flex short:sm:hidden",
             light ? "text-slate-500" : "text-slate-400"
           )}
         >
@@ -97,7 +100,7 @@ export function ChatHeader({
               : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
           )}
         >
-          <Plus size={13} /> <span className="hidden sm:inline">New chat</span>
+          <Plus size={13} /> <span className="hidden sm:inline short:hidden">New chat</span>
         </button>
       )}
       {showLessonsButton && (
@@ -116,7 +119,7 @@ export function ChatHeader({
               : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
           )}
         >
-          <BookOpen size={13} /> <span className="hidden sm:inline">Lesson</span>
+          <BookOpen size={13} /> <span className="hidden sm:inline short:hidden">Lesson</span>
         </button>
       )}
       {session?.ictFairAccess && (

@@ -60,7 +60,7 @@ export function FairButton({
           : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
       )}
     >
-      <Presentation size={13} /> <span className="hidden sm:inline">ICT Fair</span>
+      <Presentation size={13} /> <span className="hidden sm:inline short:hidden">ICT Fair</span>
     </button>
   );
 }

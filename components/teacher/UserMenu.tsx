@@ -65,7 +65,9 @@ export function UserMenu({
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-brand to-brand-700 text-[11px] font-semibold text-white shadow-lg shadow-brand/30">
           {initials(session.name)}
         </span>
-        <span className="hidden flex-col leading-tight md:flex">
+        {/* Name and role are worth their width on a laptop; on a phone held
+            sideways this row has three pills and a lesson beside it. */}
+        <span className="hidden flex-col leading-tight md:flex short:md:hidden">
           <span
             className={cn(
               "text-[12px] font-medium",

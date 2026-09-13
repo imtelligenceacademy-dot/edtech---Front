@@ -36,13 +36,16 @@ export function ChatComposer({
     <div
       className={cn(
         "border-t px-4 py-4 backdrop-blur-xl sm:px-8",
+        // A landscape phone gives the conversation a few hundred pixels; the
+        // frame around the box should not be most of them.
+        "short:px-3 short:py-2 short:sm:px-4",
         light ? "border-slate-200/60 bg-white/40" : "border-white/5 bg-slate-950/40"
       )}
     >
       <div className="mx-auto max-w-3xl">
         <div
           className={cn(
-            "group relative flex items-end gap-2 rounded-2xl border p-2 shadow-lg transition focus-within:border-brand/60",
+            "group relative flex items-end gap-2 rounded-2xl border p-2 shadow-lg transition focus-within:border-brand/60 short:p-1",
             light
               ? "border-slate-200 bg-white shadow-slate-900/5 focus-within:shadow-brand/20"
               : "border-white/10 bg-white/5 shadow-black/30 focus-within:shadow-brand/20"
@@ -65,7 +68,9 @@ export function ChatComposer({
               // page in when a focused field is under 16px and never zooms back
               // out, which leaves a teacher pinching to find the send button
               // after every question. Unchanged from sm up.
-              "max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-base focus:outline-none disabled:cursor-not-allowed sm:text-sm",
+              // text-base stays below sm for the iOS reason above; a landscape
+              // phone is past sm, so short only trims the padding.
+              "max-h-[180px] flex-1 resize-none bg-transparent px-3 py-2.5 text-base focus:outline-none disabled:cursor-not-allowed sm:text-sm short:max-h-[96px] short:py-1.5",
               light
                 ? "text-slate-900 placeholder:text-slate-400"
                 : "text-white placeholder:text-slate-500"
@@ -126,8 +131,15 @@ export function ChatComposer({
             </kbd>{" "}
             for newline ·{" "}
           </span>
-          Saved to this lesson so you can come back to it, visible only to you
-          and the platform owner
+          {/* The disclosure stays on every screen; on a short one it says the
+              same thing in a line instead of three. */}
+          <span className="short:hidden">
+            Saved to this lesson so you can come back to it, visible only to you
+            and the platform owner
+          </span>
+          <span className="hidden short:inline">
+            Saved · visible only to you and the platform owner
+          </span>
         </p>
         <p className="mt-1 text-center text-[11px]">
           <AiQuotaNote quota={quota} />
