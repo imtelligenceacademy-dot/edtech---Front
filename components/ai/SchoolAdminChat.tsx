@@ -224,7 +224,9 @@ function Welcome({
   light: boolean;
 }) {
   return (
-    <div className="mx-auto flex h-full max-w-2xl flex-col items-center justify-center text-center">
+    // min-h-full, so that on a short screen the openers below stay reachable
+    // rather than overflowing a centred box that cannot scroll upward.
+    <div className="mx-auto flex min-h-full max-w-2xl flex-col items-center justify-center text-center">
       <img
         src="/logo.png"
         alt="IM-Telligence"

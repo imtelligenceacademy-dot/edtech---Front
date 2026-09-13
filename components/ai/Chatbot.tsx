@@ -165,8 +165,17 @@ export function Chatbot({
   // yet), not on the class gate (its actions belong to a class, and none has
   // been picked), not in ICT Fair (view-only), and not while the viewer pane is
   // open (the viewer already offers the same actions).
-  const railAvailable =
-    !openedLesson && !showFairProjects && selectedGrade !== null && !showClassGate;
+  const railUsable =
+    !showFairProjects && selectedGrade !== null && !showClassGate;
+  const railAvailable = railUsable && !openedLesson;
+  // From md up, an open lesson replaces the rail with the viewer, which offers
+  // the same actions. Below md that viewer is not rendered at all — the phone
+  // reads a lesson in the full-screen viewer instead — so once a teacher backs
+  // out of it the rail is the only way left to reopen the lesson, mark it
+  // complete or ask for access. Suppressing it there left them with a
+  // conversation and no lesson controls at all.
+  const railMobileOnly = railUsable && !!openedLesson;
+  const railShown = railAvailable || railMobileOnly;
 
   // The teacher's lessons, their progress in them, and their access requests —
   // all for the class in front of them.
@@ -318,8 +327,8 @@ export function Chatbot({
   // opening a lesson, switching to ICT Fair — so it is never left standing over
   // a screen it does not belong to, or found already open on the way back.
   useEffect(() => {
-    if (!railAvailable) setRailOpen(false);
-  }, [railAvailable]);
+    if (!railShown) setRailOpen(false);
+  }, [railShown]);
 
   // Escape closes the sheet, as it does the other overlays here.
   useEffect(() => {
@@ -710,7 +719,8 @@ export function Chatbot({
           onNewChat={resetSession}
           showFairProjects={showFairProjects}
           onOpenFair={openFairProjects}
-          showLessonsButton={railAvailable}
+          showLessonsButton={railShown}
+          lessonsButtonMobileOnly={railMobileOnly}
           onOpenLessons={() => setRailOpen(true)}
           assistant={!assistantHidden}
           light={light}
@@ -847,7 +857,7 @@ export function Chatbot({
           next to a conversation on a phone, but the rail is the only way to
           open a lesson, mark one complete or ask for access — so it has to be
           reachable, not merely absent. */}
-      {railAvailable && railOpen && (
+      {railShown && railOpen && (
         <div
           onClick={() => setRailOpen(false)}
           className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-[1px] xl:hidden"
@@ -873,7 +883,7 @@ export function Chatbot({
           light
             ? "border-slate-200/60 bg-white xl:bg-white/40"
             : "border-white/5 bg-slate-900 xl:bg-slate-950/40",
-          railAvailable ? "flex" : "hidden",
+          railAvailable ? "flex" : railMobileOnly ? "flex md:hidden" : "hidden",
           railOpen ? "translate-x-0" : "translate-x-full"
         )}
       >

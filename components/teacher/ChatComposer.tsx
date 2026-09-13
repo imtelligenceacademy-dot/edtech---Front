@@ -107,20 +107,26 @@ export function ChatComposer({
             light ? "text-slate-500" : "text-slate-500"
           )}
         >
-          Press{" "}
-          <kbd
-            className={cn("rounded px-1 py-0.5", light ? "bg-slate-200/60" : "bg-white/5")}
-          >
-            Enter
-          </kbd>{" "}
-          to send ·{" "}
-          <kbd
-            className={cn("rounded px-1 py-0.5", light ? "bg-slate-200/60" : "bg-white/5")}
-          >
-            Shift+Enter
-          </kbd>{" "}
-          for newline · saved to this lesson so you can come back to it, visible
-          only to you and the platform owner
+          {/* Keyboard advice only where there is a keyboard. On a phone these
+              two lines cost a fifth of the screen to describe keys that are not
+              there, pushing the lesson itself out of view. */}
+          <span className="hidden sm:inline">
+            Press{" "}
+            <kbd
+              className={cn("rounded px-1 py-0.5", light ? "bg-slate-200/60" : "bg-white/5")}
+            >
+              Enter
+            </kbd>{" "}
+            to send ·{" "}
+            <kbd
+              className={cn("rounded px-1 py-0.5", light ? "bg-slate-200/60" : "bg-white/5")}
+            >
+              Shift+Enter
+            </kbd>{" "}
+            for newline ·{" "}
+          </span>
+          Saved to this lesson so you can come back to it, visible only to you
+          and the platform owner
         </p>
         <p className="mt-1 text-center text-[11px]">
           <AiQuotaNote quota={quota} />

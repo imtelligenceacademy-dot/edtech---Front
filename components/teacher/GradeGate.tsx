@@ -33,7 +33,11 @@ export function GradeGate({
   const [lastGrade] = useState(lastTaughtGrade);
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
+    // min-h-full, not h-full: pinned to the viewport height, a list of grades
+    // taller than the screen overflows a centred flex box in both directions,
+    // and the half above the start edge cannot be scrolled to. Growing instead
+    // leaves no free space to centre, so nothing is pushed out of reach.
+    <div className="mx-auto flex min-h-full max-w-3xl flex-col items-center justify-center text-center">
       <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand to-brand-800 shadow-xl shadow-brand/40">
         <GraduationCap size={28} className="text-white" />
       </div>

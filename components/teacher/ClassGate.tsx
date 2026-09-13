@@ -38,7 +38,10 @@ export function ClassGate({
   const [lastSection] = useState(() => lastTaughtSection(grade));
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
+    // min-h-full for the same reason as the grade gate: a teacher with four
+    // classes of one grade has a list taller than a phone, and a centred fixed
+    // height puts the top of it somewhere they cannot scroll.
+    <div className="mx-auto flex min-h-full max-w-3xl flex-col items-center justify-center text-center">
       <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 via-brand to-brand-800 shadow-xl shadow-brand/40">
         <Users size={28} className="text-white" />
       </div>

@@ -20,6 +20,7 @@ export function ChatHeader({
   showFairProjects,
   onOpenFair,
   showLessonsButton,
+  lessonsButtonMobileOnly = false,
   onOpenLessons,
   assistant = true,
   light,
@@ -34,6 +35,9 @@ export function ChatHeader({
    *  is the only way to reach it; from xl the rail is always on screen and the
    *  button is hidden. */
   showLessonsButton: boolean;
+  /** True when the rail exists only because the lesson viewer is not rendered
+   *  at this width, so the button must disappear where the viewer takes over. */
+  lessonsButtonMobileOnly?: boolean;
   onOpenLessons: () => void;
   /** Whether this teacher has the assistant. A kindergarten teacher does not,
    *  and "Lesson copilot" would be describing something that isn't there. */
@@ -104,6 +108,9 @@ export function ChatHeader({
           className={cn(
             "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[11px] font-medium shadow-sm transition active:scale-95 xl:hidden",
             "relative after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-['']",
+            // Where the rail only stands in for a lesson viewer that is not
+            // rendered at this width, it goes as soon as that viewer appears.
+            lessonsButtonMobileOnly && "md:hidden",
             light
               ? "border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:text-brand-700"
               : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
