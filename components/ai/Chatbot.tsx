@@ -313,6 +313,12 @@ export function Chatbot({
 
   useEffect(() => {
     if (!restored) return;
+    // Nothing to save yet, and something still to restore: leave what is
+    // stored alone. Writing null the moment `restored` flipped erased the id
+    // this component had just read but not yet applied — so stepping into ICT
+    // Fair (which unmounts this, and has no grade to apply it to) and back
+    // came home to the launcher rather than the lesson.
+    if (!lastLesson && pendingLessonIdRef.current) return;
     try {
       const payload: SavedChat = { lastLessonId: lastLesson?.id ?? null };
       window.sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(payload));

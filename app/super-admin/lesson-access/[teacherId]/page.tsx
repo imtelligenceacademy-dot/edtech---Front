@@ -17,6 +17,7 @@ import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { getTeacherAccess, resetTeacherProgress, setLessonOverride } from "@/lib/api";
+import { formatDateOnly } from "@/lib/utils";
 import { gradeTitle, summarizeGrades } from "@/lib/grades";
 import type { LessonAccessStatus, TeacherAccess } from "@/types";
 
@@ -30,12 +31,12 @@ const STATUS_META: Record<
   locked: { label: "Locked", tone: "muted", Icon: Lock },
 };
 
+// The shared formatter, which pins the school's timezone. Read in the viewer's
+// own zone instead, a lesson completed just after midnight in Beirut was dated
+// to the previous day for an admin in London — and to a different day again
+// from the same event shown elsewhere on the platform.
 function formatDate(iso?: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return formatDateOnly(iso ?? undefined);
 }
 
 export default function TeacherLessonAccessPage() {

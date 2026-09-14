@@ -16,6 +16,7 @@ import {
   listUsers,
 } from "@/lib/api";
 import { gradeTitle, summarizeGrades } from "@/lib/grades";
+import { formatDateOnly } from "@/lib/utils";
 import type { AccessRequest, School, User } from "@/types";
 
 // Index for the per-teacher lesson-unlock pages. Picking a teacher opens their
@@ -134,7 +135,7 @@ export default function LessonAccessIndexPage() {
                     {r.section ? ` · Class ${r.section}` : ""}
                     {r.language ? ` · ${r.language.toUpperCase()}` : ""}
                     {r.lessonNo != null ? ` · Lesson ${r.lessonNo}` : ""}
-                    {` · ${new Date(r.createdAt).toLocaleDateString()}`}
+                    {` · ${formatDateOnly(r.createdAt)}`}
                   </div>
                   {r.note && <p className="mt-1 text-xs italic text-slate-600">“{r.note}”</p>}
                 </div>

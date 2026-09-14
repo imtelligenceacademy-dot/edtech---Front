@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -16,6 +16,27 @@ import { cn } from "@/lib/utils";
 import { gradeTitle } from "@/lib/grades";
 import { PdfCanvasViewer } from "@/components/lesson-viewer/PdfCanvasViewer";
 import type { Lesson } from "@/types";
+
+/** Whether this pane is rendered at all.
+ *
+ *  The pane is hidden with CSS below md — but hidden is still mounted, so its
+ *  viewer went on fetching the whole PDF into a blob while the phone's
+ *  full-screen viewer fetched the same file again. Two downloads and two object
+ *  URLs held for as long as the lesson stayed open, on the device least able to
+ *  afford either.
+ */
+function usePaneOnScreen(): boolean {
+  const [onScreen, setOnScreen] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 768px)");
+    const sync = () => setOnScreen(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return onScreen;
+}
+
 
 export function LessonPane({
   lesson,
@@ -54,6 +75,7 @@ export function LessonPane({
   onSlideChange?: (slide: number) => void;
   light: boolean;
 }) {
+  const paneOnScreen = usePaneOnScreen();
   const isPdf = Boolean(lesson.fileId);
   const total = lesson.slides.length;
   const slide = isPdf ? undefined : lesson.slides[current - 1];
@@ -174,16 +196,20 @@ export function LessonPane({
       {/* Canvas: real PDF when linked, otherwise the slide deck */}
       {isPdf ? (
         <div className="min-h-0 flex-1">
-          <PdfCanvasViewer
-            fileId={lesson.fileId as string}
-            lessonId={lesson.id}
-            section={section}
-            light={light}
-            accessStatus={lesson.accessStatus}
-            onExit={onClose}
-            onCompleted={onCompleted}
-            onSlideChange={onSlideChange}
-          />
+          {/* Only once this pane is actually on screen: below md it is hidden,
+              and a hidden viewer still downloads the whole PDF. */}
+          {paneOnScreen && (
+            <PdfCanvasViewer
+              fileId={lesson.fileId as string}
+              lessonId={lesson.id}
+              section={section}
+              light={light}
+              accessStatus={lesson.accessStatus}
+              onExit={onClose}
+              onCompleted={onCompleted}
+              onSlideChange={onSlideChange}
+            />
+          )}
         </div>
       ) : (
         <div className="flex flex-1 flex-col gap-4 px-8 py-6 min-h-0">

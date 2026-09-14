@@ -24,8 +24,13 @@ const SUGGESTIONS = [
 ];
 
 // Phrases that mean "make me a report I can download" rather than a chat answer.
+//
+// Narrow on purpose. Matching a bare "summary", "word" or "export" turned
+// "give me a summary of teacher progress" — an ordinary question about the
+// school — into a Word-document card instead of an answer. A document is asked
+// for by naming one, or by asking for one to be made.
 const REPORT_INTENT =
-  /\b(report|summary|download|word|docx?|export|pdf)\b/i;
+  /\b(?:report|docx?|word document)\b|\b(?:download|export|generate|compile|produce|create|make|write|send)\b[^.?!]*\b(?:report|document|docx?|pdf|summary)\b/i;
 
 // Chat messages, optionally carrying a downloadable-report action.
 type ReportStatus = "idle" | "loading" | "done" | "error";
@@ -86,13 +91,17 @@ export function SchoolAdminChat() {
       if (!started) {
         setMessages((prev) => [
           ...prev,
-          { id, role: "assistant", content: "I didn't get a response. Please try again.", timestamp: new Date().toISOString() },
+          { id: `${id}_empty`, role: "assistant", content: "I didn't get a response. Please try again.", timestamp: new Date().toISOString() },
         ]);
       }
     } catch {
+      // A distinct id. Reusing the streaming message's meant an error arriving
+      // after the first delta appended a second message with the same key —
+      // React rendering two children as one, and every map over the list
+      // rewriting both.
       setMessages((prev) => [
         ...prev,
-        { id, role: "assistant", content: "I couldn't reach the assistant just now. Please try again in a moment.", timestamp: new Date().toISOString() },
+        { id: `${id}_error`, role: "assistant", content: "I couldn't reach the assistant just now. Please try again in a moment.", timestamp: new Date().toISOString() },
       ]);
     } finally {
       setThinking(false);
@@ -116,6 +125,9 @@ export function SchoolAdminChat() {
   function send(override?: string) {
     const text = (override ?? input).trim();
     if (!text) return;
+    // One at a time, as on the teacher side. There is no Stop button here, so
+    // a second Enter used to start a second stream with nothing to cancel it.
+    if (thinking) return;
     setMessages((prev) => [
       ...prev,
       { id: `u_${Date.now()}`, role: "user", content: text, timestamp: new Date().toISOString() },
