@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
+import { LoadError } from "@/components/ui/LoadError";
 import {
   createSchool as createSchoolApi,
   deleteSchool as deleteSchoolApi,
@@ -30,12 +31,29 @@ export default function SchoolsPage() {
 
   const [deleting, setDeleting] = useState<School | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A failed load is not an empty list. Without this the page said "No schools
+  // yet." to an admin whose session had simply expired, next to a button
+  // inviting them to create one that already exists.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     listSchools()
       .then(setSchools)
+      .catch((err) =>
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Couldn't load the schools. Check your connection and try again."
+        )
+      )
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function openCreate() {
     setError(null);
@@ -110,6 +128,7 @@ export default function SchoolsPage() {
           </Button>
         }
       />
+      {loadError && <LoadError message={loadError} onRetry={load} />}
       <Card>
         <Table>
           <THead>
@@ -159,7 +178,7 @@ export default function SchoolsPage() {
                 </TD>
               </TR>
             ))}
-            {schools.length === 0 && (
+            {schools.length === 0 && !loadError && (
               <TR>
                 <TD className="text-center text-slate-500">No schools yet.</TD>
               </TR>

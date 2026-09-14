@@ -73,6 +73,10 @@ export function PdfCanvasViewer({
   const [fitScale, setFitScale] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [current, setCurrent] = useState(1);
+  // The page, readable from the rebuild effect below without making it depend
+  // on the page (which would rebuild the document on every scroll).
+  const currentRef = useRef(1);
+  currentRef.current = current;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   // Completing locks the lesson and starts the waiting period before the next
@@ -243,6 +247,15 @@ export function PdfCanvasViewer({
       wrappersRef.current.push(wrapper);
       lazy.observe(wrapper);
     }
+
+    // Put the reader back where they were. Emptying the container above drops
+    // the scroll position to zero, and this effect re-runs on every zoom step
+    // and every width change — so dragging the split, zooming, or the class's
+    // projector going full screen all silently threw the lesson back to page
+    // one, in front of the room, and then saved page one as the teacher's
+    // place. Restoring is a no-op on first build, where the page is 1 anyway.
+    const resumeAt = wrappersRef.current[currentRef.current - 1];
+    if (resumeAt) container.scrollTop = resumeAt.offsetTop;
 
     return () => {
       cancelled = true;

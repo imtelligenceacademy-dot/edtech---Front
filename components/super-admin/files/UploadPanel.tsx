@@ -105,22 +105,44 @@ export function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> | 
         : null
     );
 
+    // The preview itself is run by the effect below, which also re-runs it if
+    // the language or year is changed while these files are still staged.
     setStaged(usable);
-    setPreviewing(true);
-    try {
-      setPreview(await previewUploads(usable.map((f) => f.name), language, year));
-    } catch {
-      // Without a preview the admin can still upload; they just don't get the
-      // heads-up.
-      setPreview(null);
-      setMessage({
-        tone: "info",
-        text: "Couldn't preview these files — you can still upload them.",
-      });
-    } finally {
-      setPreviewing(false);
-    }
   }
+
+  // What the preview promises has to be what Upload will do. It was worked out
+  // once, from the language and year selected at the moment the files were
+  // dropped; changing either afterwards left a list on screen naming the
+  // teachers of a different curriculum, directly above the button that would
+  // send the files to the other one.
+  useEffect(() => {
+    if (staged.length === 0) {
+      setPreview(null);
+      return;
+    }
+    let alive = true;
+    setPreviewing(true);
+    previewUploads(staged.map((f) => f.name), language, year)
+      .then((rows) => {
+        if (alive) setPreview(rows);
+      })
+      .catch(() => {
+        // Without a preview the admin can still upload; they just don't get
+        // the heads-up. What they must never get is a stale one.
+        if (!alive) return;
+        setPreview(null);
+        setMessage({
+          tone: "info",
+          text: "Couldn't preview these files — you can still upload them.",
+        });
+      })
+      .finally(() => {
+        if (alive) setPreviewing(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [staged, language, year]);
 
   function cancelStaged() {
     setStaged([]);

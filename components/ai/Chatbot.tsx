@@ -80,6 +80,7 @@ import {
   COMPLETE_INTENT,
   findLessonByText,
   hasNamedLessonOpenIntent,
+  isQuestionAboutAnAction,
   NEXT_LESSON_INTENT,
   OPEN_LESSON_INTENT,
 } from "@/lib/teacher/lesson-intents";
@@ -519,24 +520,31 @@ export function Chatbot({
     // Sending is an intent to follow the answer.
     followLatest();
 
-    // Lesson actions are handled by the app itself (not the LLM):
-    if (COMPLETE_INTENT.test(text)) {
+    // Lesson actions are handled by the app itself (not the LLM) — but only
+    // when the teacher is telling the app to do something, not asking it a
+    // question about doing it. "How do I mark it as complete?" was read as
+    // "mark it as complete".
+    const asking = isQuestionAboutAnAction(text);
+    // Completing is the destructive one: it locks the lesson and starts the
+    // next one's wait, and only an admin can undo it. A trailing question mark
+    // is enough to hold it back and let the model answer instead.
+    if (!asking && !/\?\s*$/.test(text) && COMPLETE_INTENT.test(text)) {
       setThinking(true);
       void markCurrentComplete();
       return;
     }
-    if (NEXT_LESSON_INTENT.test(text)) {
+    if (!asking && NEXT_LESSON_INTENT.test(text)) {
       openNextLesson();
       return;
     }
-    if (hasNamedLessonOpenIntent(text)) {
+    if (!asking && hasNamedLessonOpenIntent(text)) {
       const named = findLessonByText(text, gradeLessons);
       if (named) {
         openLesson(named);
         return;
       }
     }
-    if (OPEN_LESSON_INTENT.test(text)) {
+    if (!asking && OPEN_LESSON_INTENT.test(text)) {
       openCurrentLesson();
       return;
     }

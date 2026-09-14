@@ -66,6 +66,24 @@ export function findLessonByText(input: string, lessons: Lesson[]): Lesson | nul
   return null;
 }
 
+// A question *about* doing something, rather than an instruction to do it.
+//
+// "How do I mark it as complete?" used to be read as the instruction it asks
+// about: the lesson was marked done, which locks it and starts the next one's
+// waiting period, and only an admin can undo that. "Is the next lesson about
+// sensors?" opened the next lesson instead of answering.
+//
+// Deliberately narrow. It matches the interrogatives that can only introduce a
+// question — how, what, why, is, does, should — and not "can you", "could
+// you", "will you" or "would you", which are imperatives wearing a question
+// mark: "can you open the buzzer lesson?" is still a request to open it.
+const INFORMATIONAL_QUESTION =
+  /^\s*(?:so|and|but|ok(?:ay)?|hey|hi)?[\s,]*(?:how|what|why|when|where|which|whose|whom|who|is|are|was|were|does|do|did|has|have|should|am)\b/i;
+
+export function isQuestionAboutAnAction(text: string): boolean {
+  return INFORMATIONAL_QUESTION.test(text);
+}
+
 // Lesson-action intents the assistant handles itself (never sent to the LLM).
 // "I finished/completed the lesson/pdf" / "mark the pdf as complete" -> mark done.
 export const COMPLETE_INTENT =

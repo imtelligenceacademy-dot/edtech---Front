@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Check, Plus, X, Ban, Pencil, Trash2, ArrowLeft, ArrowRight, Eye, EyeOff, Search } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Button } from "@/components/ui/Button";
+import { LoadError } from "@/components/ui/LoadError";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Table, THead, TR, TH, TD } from "@/components/ui/Table";
@@ -96,14 +97,31 @@ export default function AccountsPage() {
 
   const [deleting, setDeleting] = useState<User | null>(null);
 
-  useEffect(() => {
+  // A failed load left "No users match these filters." on screen, which reads
+  // as a filter being too narrow rather than as nothing having been fetched.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     Promise.all([listUsers(), listSchools()])
       .then(([userRows, schoolRows]) => {
         setUsers(userRows);
         setSchools(schoolRows);
       })
+      .catch((err) =>
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Couldn't load the accounts. Check your connection and try again."
+        )
+      )
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function update(id: string, status: UserStatus) {
     const user = await updateUserStatus(id, status);
@@ -298,6 +316,8 @@ export default function AccountsPage() {
         }
       />
 
+      {loadError && <LoadError message={loadError} onRetry={load} />}
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
           {tabs.map((t) => (
@@ -398,7 +418,7 @@ export default function AccountsPage() {
             {filtered.length === 0 && (
               <TR>
                 <TD className="py-8 text-center text-sm text-slate-500">
-                  No users match these filters.
+                  {loadError ? "—" : "No users match these filters."}
                 </TD>
               </TR>
             )}

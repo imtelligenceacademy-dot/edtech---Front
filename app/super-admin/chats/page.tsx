@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Download, MessageSquare } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { LoadError } from "@/components/ui/LoadError";
 import { Button } from "@/components/ui/Button";
 import {
   downloadChatExport,
@@ -26,12 +27,29 @@ export default function SuperAdminChatsPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     listUsers()
       .then((rows) => setTeachers(rows.filter((u) => u.role === "teacher")))
-      .catch(() => setTeachers([]))
+      .catch((err) => {
+        // Swallowing this left an empty teacher picker, which reads as a
+        // platform with no teachers on it.
+        setTeachers([]);
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Couldn't load the teachers. Check your connection and try again."
+        );
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     setOpenThread(null);
@@ -81,6 +99,8 @@ export default function SuperAdminChatsPage() {
           </Button>
         }
       />
+
+      {loadError && <LoadError message={loadError} onRetry={load} />}
 
       <Card className="mb-6">
         <CardBody>

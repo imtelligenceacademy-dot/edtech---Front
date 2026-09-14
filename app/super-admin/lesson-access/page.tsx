@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BellRing, Check, ChevronRight, Info, Search, Unlock, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { LoadError } from "@/components/ui/LoadError";
 import {
   denyAccessRequest,
   grantAccessRequest,
@@ -27,15 +28,32 @@ export default function LessonAccessIndexPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  // "No teachers found." is the empty state for a search that matched
+  // nothing; a load that failed has to say so instead.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     Promise.all([listUsers(), listSchools(), listAccessRequests()])
       .then(([users, schoolRows, requestRows]) => {
         setTeachers(users.filter((u) => u.role === "teacher"));
         setSchools(schoolRows);
         setRequests(requestRows);
       })
+      .catch((err) =>
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Couldn't load this page. Check your connection and try again."
+        )
+      )
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function resolve(req: AccessRequest, grant: boolean) {
     setBusy(req.id);
@@ -74,6 +92,8 @@ export default function LessonAccessIndexPage() {
         title="Lesson Unlock"
         subtitle="Pick a teacher to manage their sequential lesson access and override the waiting period."
       />
+
+      {loadError && <LoadError message={loadError} onRetry={load} />}
 
       {requests.length > 0 && (
         <Card className="mb-6 border-amber-200">
@@ -158,7 +178,7 @@ export default function LessonAccessIndexPage() {
 
       <Card>
         <CardBody className="divide-y divide-slate-100 p-0">
-          {filtered.length === 0 && (
+          {filtered.length === 0 && !loadError && (
             <p className="px-4 py-6 text-sm text-slate-500">No teachers found.</p>
           )}
           {filtered.map((t) => (
