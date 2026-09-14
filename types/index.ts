@@ -118,6 +118,11 @@ export interface Lesson {
 export interface ClassSummary {
   grade: number;
   section: string;
+  /** The curriculum this row counts. Lessons are sequenced per language, so a
+   *  teacher of both has one row per language for a grade; null when they have
+   *  only one and it is never shown. Collapsed for the pickers by
+   *  `lib/teacher/classes`. */
+  language?: string | null;
   total: number;
   completed: number;
   nextLessonId?: string | null;

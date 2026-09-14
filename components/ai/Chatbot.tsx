@@ -274,7 +274,8 @@ export function Chatbot({
     setThinking,
     streaming,
     failedPrompt,
-    setFailedPrompt,
+    failedThread,
+    clearFailedPrompt,
     ask,
     stop: stopStreaming,
     retryLast,
@@ -513,10 +514,14 @@ export function Chatbot({
   function send(textOverride?: string) {
     const text = (textOverride ?? input).trim();
     if (!text) return;
+    // A reply is already being written. Pressing Enter again used to start a
+    // second stream over the top of it: two questions spent, two answers
+    // interleaved in the transcript, and Stop reaching only the newer one.
+    if (thinking || streaming) return;
     setEngaged(true);
     pushUser(text);
     setInput("");
-    setFailedPrompt(null);
+    clearFailedPrompt();
     // Sending is an intent to follow the answer.
     followLatest();
 
@@ -638,7 +643,7 @@ export function Chatbot({
     stopStreaming();
     clearChatSession();
     setEngaged(false);
-    setFailedPrompt(null);
+    clearFailedPrompt();
     setChatCollapsed(false);
     setMessages([]);
     setInput("");
@@ -830,7 +835,12 @@ export function Chatbot({
               {visibleMessages.map((m) => (
                 <MessageBubble key={m.id} message={m} light={light} />
               ))}
-              {failedPrompt && !thinking && !streaming && (
+              {failedPrompt &&
+                failedThread &&
+                failedThread.lessonId === contextLessonId &&
+                failedThread.section === section &&
+                !thinking &&
+                !streaming && (
                 <div className="flex justify-center">
                   <button
                     onClick={() => retryLast(askContext)}

@@ -100,6 +100,9 @@ export default function AccountsPage() {
   // A failed load left "No users match these filters." on screen, which reads
   // as a filter being too narrow rather than as nothing having been fetched.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Errors from acting on a row, shown above the table rather than inside a
+  // modal that is not open.
+  const [listError, setListError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -124,8 +127,18 @@ export default function AccountsPage() {
   }, [load]);
 
   async function update(id: string, status: UserStatus) {
-    const user = await updateUserStatus(id, status);
-    setUsers((prev) => prev.map((u) => (u.id === id ? user : u)));
+    // Unhandled, a rejection here was silent: the row simply did not change,
+    // which looks identical to the click not registering. The server refuses
+    // some of these outright (changing your own status, for one).
+    setListError(null);
+    try {
+      const user = await updateUserStatus(id, status);
+      setUsers((prev) => prev.map((u) => (u.id === id ? user : u)));
+    } catch (err) {
+      setListError(
+        err instanceof Error ? err.message : "Couldn't change that account."
+      );
+    }
   }
 
   function openCreate() {
@@ -235,10 +248,16 @@ export default function AccountsPage() {
           language: isTeacher ? draft.language : undefined,
           ictFairAccess: isTeacher ? draft.ictFairAccess : false,
         });
+        // The profile edit has committed. Take it into the table now, and
+        // drop the renames with it: leaving both until after the password call
+        // meant a failure there left the row stale and the renames pending, so
+        // re-saving re-sent renames the server had already applied (a hard 400)
+        // and reopening the stale row wrote the old grades back over the new.
+        setUsers((prev) => prev.map((u) => (u.id === user.id ? user : u)));
+        setRenames([]);
         if (draft.password.trim()) {
           await resetUserPassword(editing.id, draft.password);
         }
-        setUsers((prev) => prev.map((u) => (u.id === user.id ? user : u)));
       }
       closeModal();
     } catch (err) {
@@ -317,6 +336,7 @@ export default function AccountsPage() {
       />
 
       {loadError && <LoadError message={loadError} onRetry={load} />}
+      {listError && <LoadError message={listError} />}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs">

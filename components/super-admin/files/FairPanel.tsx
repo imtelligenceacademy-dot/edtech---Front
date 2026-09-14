@@ -79,6 +79,12 @@ export function FairPanel() {
       setSections(rows);
       setUnfiled(loose);
     } catch (err) {
+      // Clear them. Left standing, the previous school's sections stayed on
+      // screen under the newly chosen school's name — and uploading onto one
+      // of those rows filed a project into the school the admin had just
+      // navigated away from, where its teachers could see it.
+      setSections([]);
+      setUnfiled([]);
       setMessage({
         tone: "error",
         text: err instanceof Error ? err.message : "Couldn't load sections.",
@@ -501,10 +507,18 @@ function ProjectRow({
             </button>
           </>
         )}
+        {/* Asked first. This was the one destructive action in the whole
+            super-admin area that happened on a single click — and the button
+            only appears on hover, next to the title an admin is reading. */}
         <button
           type="button"
           title="Delete this project"
           onClick={async () => {
+            const sure = window.confirm(
+              `Delete "${project.title}"? The project and its PDF go, ` +
+                `and this cannot be undone.`
+            );
+            if (!sure) return;
             try {
               await deleteFairProject(project.id);
               await onChanged();

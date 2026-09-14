@@ -9,6 +9,7 @@ import {
   listProgress,
   requestLessonAccess,
 } from "@/lib/api";
+import { collapseByClass } from "@/lib/teacher/classes";
 import type {
   ClassSummary,
   FairSection,
@@ -85,7 +86,9 @@ export function useTeacherLessons(session: Session | null, section: string = "")
       .finally(() => setLessonsLoaded(true));
     refreshProgress();
     refreshRequests();
-    listMyClasses().then(setClasses).catch(() => setClasses([]));
+    listMyClasses()
+      .then((rows) => setClasses(collapseByClass(rows)))
+      .catch(() => setClasses([]));
   }, [section, refreshProgress, refreshRequests]);
 
   // Only once we know the teacher has been granted ICT Fair access.
@@ -98,7 +101,9 @@ export function useTeacherLessons(session: Session | null, section: string = "")
   function refreshLessons() {
     listLessons(section || undefined).then(setLessons).catch(() => {});
     refreshProgress();
-    listMyClasses().then(setClasses).catch(() => {});
+    listMyClasses()
+      .then((rows) => setClasses(collapseByClass(rows)))
+      .catch(() => {});
   }
 
   /**

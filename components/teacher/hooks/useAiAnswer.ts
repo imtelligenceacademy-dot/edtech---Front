@@ -21,9 +21,24 @@ type Thread = {
 export function useAiAnswer(thread: Thread) {
   const [thinking, setThinking] = useState(false);
   const [streaming, setStreaming] = useState(false);
-  // Kept so a failed turn can be retried without the teacher retyping it.
-  const [failedPrompt, setFailedPrompt] = useState<string | null>(null);
+  // Kept so a failed turn can be retried without the teacher retyping it —
+  // with the thread it belongs to, because a teacher can switch lesson or class
+  // while the retry button is still on screen. Re-asking with whatever context
+  // is current would send a Grade 5 question into Grade 7's thread and store
+  // the answer there.
+  const [failed, setFailed] = useState<{
+    text: string;
+    lessonId: string | null;
+    section: string;
+  } | null>(null);
+  const failedPrompt = failed?.text ?? null;
   const abortRef = useRef<AbortController | null>(null);
+
+  /** Drop the pending retry offer. Setting one is `ask`'s job: it is the only
+   *  place that knows which thread the failure belongs to. */
+  function clearFailedPrompt() {
+    setFailed(null);
+  }
 
   // `retry` re-asks a question that's already in the transcript, so the failed
   // turn (and its error reply) must be trimmed off the history first.
@@ -101,8 +116,11 @@ export function useAiAnswer(thread: Thread) {
         );
       }
       if (!started) {
-        pushAssistant("I didn't get a response. Please try again.");
-        setFailedPrompt(text);
+        pushAssistant("I didn't get a response. Please try again.", {
+          lessonId: threadId,
+          section: threadSection,
+        });
+        setFailed({ text, lessonId: threadId, section: threadSection });
       }
     } catch (err) {
       // Stopped on purpose — keep whatever streamed in and say nothing.
@@ -113,12 +131,16 @@ export function useAiAnswer(thread: Thread) {
       const reason = err instanceof Error ? err.message.trim() : "";
       const isNetwork =
         !reason || /failed to fetch|networkerror|load failed/i.test(reason);
+      // Tagged with the thread that failed rather than the one on screen now:
+      // a failure that lands after the teacher has moved on belongs to the
+      // conversation that asked, not the one they are reading.
       pushAssistant(
         isNetwork
           ? "I couldn't reach the assistant. Please check your connection and try again."
-          : reason
+          : reason,
+        { lessonId: threadId, section: threadSection }
       );
-      setFailedPrompt(text);
+      setFailed({ text, lessonId: threadId, section: threadSection });
     } finally {
       setThinking(false);
       setStreaming(false);
@@ -135,20 +157,32 @@ export function useAiAnswer(thread: Thread) {
   }
 
   // Re-ask the last question that failed, dropping the error reply.
+  //
+  // Re-asked in the thread it was asked in, and the error reply is trimmed from
+  // that thread — `prev` holds every lesson's turns, so popping its last entry
+  // deleted whatever the teacher had most recently seen somewhere else.
   function retryLast(context: {
     lessonId: string | null;
     section: string;
     currentSlide: number | null;
   }) {
-    const text = failedPrompt;
-    if (!text) return;
-    setFailedPrompt(null);
+    if (!failed) return;
+    const { text, lessonId, section } = failed;
+    setFailed(null);
     thread.setMessages((prev) => {
-      const next = [...prev];
-      if (next.length && next[next.length - 1].role === "assistant") next.pop();
-      return next;
+      const mine = (m: AIMessage) =>
+        (m.lessonId ?? null) === lessonId && (m.section ?? "") === section;
+      let lastIndex = -1;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (mine(prev[i])) {
+          lastIndex = i;
+          break;
+        }
+      }
+      if (lastIndex === -1 || prev[lastIndex].role !== "assistant") return prev;
+      return prev.filter((_, i) => i !== lastIndex);
     });
-    void ask(text, context, true);
+    void ask(text, { ...context, lessonId, section }, true);
   }
 
   return {
@@ -156,7 +190,10 @@ export function useAiAnswer(thread: Thread) {
     setThinking,
     streaming,
     failedPrompt,
-    setFailedPrompt,
+    /** The lesson and class the failed question belongs to, so the retry
+     *  button appears under that conversation and no other. */
+    failedThread: failed ? { lessonId: failed.lessonId, section: failed.section } : null,
+    clearFailedPrompt,
     ask,
     stop,
     retryLast,
