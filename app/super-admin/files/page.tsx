@@ -180,19 +180,12 @@ export default function FilesPage() {
     try {
       setImpact(await fileDeletionImpact(ids));
     } catch (err) {
+      // No invented numbers. A fabricated all-zero impact used to stand in
+      // here, which made the modal say "nothing else is affected" about a
+      // delete that cascades lessons, progress and chats — the one claim this
+      // dialog exists to check. With impact left null the modal shows the
+      // error and keeps Delete disabled until a real answer arrives.
       setDeleteError(err instanceof Error ? err.message : "Couldn't check what this removes.");
-      setImpact({
-        files: ids.length,
-        lessons: 0,
-        teachers: 0,
-        assignments: 0,
-        progress: 0,
-        chatMessages: 0,
-        accessRequests: 0,
-        lessonsInProgress: 0,
-        lessonTitles: [],
-        missing: 0,
-      });
     } finally {
       setImpactLoading(false);
     }

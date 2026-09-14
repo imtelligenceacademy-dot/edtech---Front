@@ -49,20 +49,33 @@ export function DeleteImpactModal({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={busy || loading}>
+          {/* Never deletable on faith: until the impact numbers actually
+              arrived, the admin has not been told what this removes. */}
+          <Button variant="danger" onClick={onConfirm} disabled={busy || loading || !impact}>
             {busy
               ? "Deleting…"
-              : `Delete ${impact ? impact.files : ""} file${
-                  impact?.files === 1 ? "" : "s"
-                }`.trim()}
+              : impact
+              ? `Delete ${impact.files} file${impact.files === 1 ? "" : "s"}`
+              : "Delete"}
           </Button>
         </>
       }
     >
-      {loading || !impact ? (
+      {loading ? (
         <p className="flex items-center gap-2 py-4 text-sm text-slate-500">
           <Loader2 size={14} className="animate-spin" /> Working out what this removes…
         </p>
+      ) : !impact ? (
+        <div className="space-y-2 py-2">
+          <p className="text-sm text-slate-700">
+            Couldn&apos;t work out what deleting these would remove, so nothing
+            can be deleted yet.
+          </p>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <p className="text-xs text-slate-500">
+            Close this dialog and try again.
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">

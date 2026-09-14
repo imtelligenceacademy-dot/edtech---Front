@@ -143,6 +143,14 @@ export function Chatbot({
   // Below xl the lesson rail is a sheet rather than a column, because there is
   // no room for both it and the conversation. Closed by default.
   const [railOpen, setRailOpen] = useState(false);
+  // Whether the teacher has said something this visit — sent a question,
+  // clicked a starter prompt, asked for access, tried a locked lesson. The
+  // reply to any of those lands in the transcript, so from that moment the
+  // transcript must be the thing on screen. Without this, a question asked
+  // from the launcher was billed and answered into a screen that never
+  // rendered it. Reset when the grade changes: each grade arrives at its own
+  // launcher.
+  const [engaged, setEngaged] = useState(false);
   const pendingLessonIdRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -326,6 +334,12 @@ export function Chatbot({
     if (selectedGrade !== null) rememberGrade(selectedGrade);
   }, [selectedGrade]);
 
+  // Each grade (and each class of it) arrives at its own launcher; what the
+  // teacher said standing in another one does not carry the screen with it.
+  useEffect(() => {
+    setEngaged(false);
+  }, [selectedGrade, section]);
+
   // The rail sheet closes itself whenever there stops being a rail to show —
   // opening a lesson, switching to ICT Fair — so it is never left standing over
   // a screen it does not belong to, or found already open on the way back.
@@ -385,6 +399,8 @@ export function Chatbot({
     setRailOpen(false);
     // Sequential unlocking — a teacher can only open their current lesson.
     if (lesson.accessStatus && lesson.accessStatus !== "available") {
+      // The explanation goes into the transcript, so the transcript must show.
+      setEngaged(true);
       pushAssistant(lessonLockMessage(lesson), { sourceRef: lesson.title });
       return;
     }
@@ -496,6 +512,7 @@ export function Chatbot({
   function send(textOverride?: string) {
     const text = (textOverride ?? input).trim();
     if (!text) return;
+    setEngaged(true);
     pushUser(text);
     setInput("");
     setFailedPrompt(null);
@@ -541,7 +558,14 @@ export function Chatbot({
   const openedHereBefore =
     !!lastLesson && gradeLessons.some((l) => l.id === lastLesson.id);
   const noLessonOpenedYet = !openedLesson && !openedHereBefore;
-  const showLauncher = assistantHidden || isEmpty || noLessonOpenedYet;
+  // `isEmpty` first and unconditionally: there is never anything to gain by
+  // replacing the launcher with an empty transcript, and doing so would leave
+  // the middle of the screen blank. Past that, the launcher holds the screen
+  // until the teacher either opens a lesson here or says something — and the
+  // reply to anything they say lands in the transcript, which is why speaking
+  // has to hand the screen over.
+  const showLauncher =
+    assistantHidden || isEmpty || (!engaged && noLessonOpenedYet);
 
   // The lesson the side panel acts on: whatever is open, else the last one
   // opened - resolved against `lessons` so its access status stays current.
@@ -605,6 +629,7 @@ export function Chatbot({
   function resetSession() {
     stopStreaming();
     clearChatSession();
+    setEngaged(false);
     setFailedPrompt(null);
     setChatCollapsed(false);
     setMessages([]);
@@ -783,7 +808,10 @@ export function Chatbot({
               grade={selectedGrade}
               progressByLesson={progressByLesson}
               onOpenLesson={openLesson}
-              onRequestAccess={(lesson) => requestAccess(lesson, pushAssistant)}
+              onRequestAccess={(lesson) => {
+                setEngaged(true);
+                void requestAccess(lesson, pushAssistant);
+              }}
               onPrompt={(text) => send(text)}
               assistant={!assistantHidden}
               requestedLessonIds={requestedLessonIds}
@@ -1103,7 +1131,10 @@ export function Chatbot({
                             </span>
                           ) : (
                             <button
-                              onClick={() => requestAccess(l, pushAssistant)}
+                              onClick={() => {
+                                setEngaged(true);
+                                void requestAccess(l, pushAssistant);
+                              }}
                               // The pseudo-element is the touch area; the link
                               // itself keeps its place in the sentence.
                               className="relative flex items-center gap-0.5 font-medium text-brand-700 underline underline-offset-2 transition after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:text-brand-800"
