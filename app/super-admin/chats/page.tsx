@@ -51,22 +51,55 @@ export default function SuperAdminChatsPage() {
     load();
   }, [load]);
 
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
+
   useEffect(() => {
     setOpenThread(null);
     setMessages([]);
-    if (!teacherId) {
-      setThreads([]);
-      return;
-    }
-    listChatThreads(teacherId).then(setThreads).catch(() => setThreads([]));
+    setTranscriptError(null);
+    setThreadsError(null);
+    // Cleared whichever teacher is now selected, not only when none is. Left
+    // standing, one teacher's conversations were listed under another
+    // teacher's name for the length of the request — the panel said "4 with
+    // chats" while the picker said somebody else — and an admin reading
+    // private chat subjects against the wrong person is the whole of the harm.
+    setThreads([]);
+    if (!teacherId) return;
+
+    let current = true;
+    listChatThreads(teacherId)
+      .then((rows) => {
+        if (current) setThreads(rows);
+      })
+      .catch((err) => {
+        if (!current) return;
+        // An empty list here used to read "This teacher hasn't asked the
+        // assistant anything yet", which is a claim about the teacher rather
+        // than about the request that failed.
+        setThreadsError(
+          err instanceof Error ? err.message : "Couldn't load this teacher's lessons."
+        );
+      });
+    return () => {
+      current = false;
+    };
   }, [teacherId]);
 
   function openLessonThread(thread: ChatThread) {
     setOpenThread(thread);
     setMessages([]);
+    setTranscriptError(null);
     listChatMessages(thread.lessonId, thread.section, teacherId)
       .then(setMessages)
-      .catch(() => setMessages([]));
+      .catch((err) =>
+        // Without this the pane's only empty state is "Loading...", so a
+        // transcript that failed sat there loading for as long as anyone left
+        // it open.
+        setTranscriptError(
+          err instanceof Error ? err.message : "Couldn't load this conversation."
+        )
+      );
   }
 
   async function exportAll() {
@@ -125,7 +158,9 @@ export default function SuperAdminChatsPage() {
           <Card>
             <CardHeader title="Lessons" subtitle={`${threads.length} with chats`} />
             <CardBody className="space-y-1.5">
-              {threads.length === 0 ? (
+              {threadsError ? (
+                <p className="text-sm text-red-600">{threadsError}</p>
+              ) : threads.length === 0 ? (
                 <p className="text-sm text-slate-500">
                   This teacher hasn&apos;t asked the assistant anything yet.
                 </p>
@@ -188,7 +223,11 @@ export default function SuperAdminChatsPage() {
                 </div>
               ))}
               {openThread && messages.length === 0 && (
-                <p className="text-sm text-slate-500">Loading…</p>
+                transcriptError ? (
+                  <p className="text-sm text-red-600">{transcriptError}</p>
+                ) : (
+                  <p className="text-sm text-slate-500">Loading…</p>
+                )
               )}
             </CardBody>
           </Card>

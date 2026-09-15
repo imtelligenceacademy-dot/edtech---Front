@@ -66,25 +66,35 @@ export function FairPanel() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Which school the newest request was for. Two switches can be in flight at
+  // once, and without this the slower one wins whenever it lands second.
+  const loadingFor = useRef<string | null>(null);
+
   const refresh = useCallback(async () => {
-    if (!schoolId) {
-      setSections([]);
-      return;
-    }
+    const forSchool = schoolId;
+    loadingFor.current = forSchool;
+
+    // Cleared before the request, not only when it fails. Left standing, the
+    // previous school's sections sat on screen — and clickable — under the
+    // newly chosen school's name for as long as the request took, and dropping
+    // PDFs onto one of those rows filed them into the school the admin had just
+    // navigated away from, where its teachers can see them. The catch below has
+    // said exactly that since it was written; it was only ever true of the
+    // error path, and the success path is the one that happens.
+    setSections([]);
+    setUnfiled([]);
+    if (!forSchool) return;
+
     try {
       const [rows, loose] = await Promise.all([
-        listFairSections(schoolId),
+        listFairSections(forSchool),
         listUnfiledFairProjects(),
       ]);
+      if (loadingFor.current !== forSchool) return;
       setSections(rows);
       setUnfiled(loose);
     } catch (err) {
-      // Clear them. Left standing, the previous school's sections stayed on
-      // screen under the newly chosen school's name — and uploading onto one
-      // of those rows filed a project into the school the admin had just
-      // navigated away from, where its teachers could see it.
-      setSections([]);
-      setUnfiled([]);
+      if (loadingFor.current !== forSchool) return;
       setMessage({
         tone: "error",
         text: err instanceof Error ? err.message : "Couldn't load sections.",

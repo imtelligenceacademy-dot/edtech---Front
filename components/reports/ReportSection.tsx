@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Download, Eye, FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { LoadError } from "@/components/ui/LoadError";
 import { formatDate, cn } from "@/lib/utils";
 import {
   downloadPlatformAIReport,
@@ -41,6 +42,7 @@ export function ReportSection({
   const [aiBusy, setAiBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function handleDownloadWord() {
     setDownloadError(null);
@@ -68,13 +70,30 @@ export function ReportSection({
     }
   }
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
     listReports()
       .then((rows) =>
         setReports(rows.filter((r) => (scope === "global" ? true : r.schoolId === schoolId)))
       )
+      // A failure here used to leave the list empty and say so as fact: the
+      // header read "0 reports on file", the table read "No reports yet", and
+      // Export CSV was disabled because there was nothing to export. Every
+      // other list on this platform routes a failed load through LoadError;
+      // this one had no catch at all, so the rejection reached nothing but the
+      // browser console.
+      .catch((err) =>
+        setLoadError(
+          err instanceof Error ? err.message : "Couldn't load the reports."
+        )
+      )
       .finally(() => setLoading(false));
   }, [schoolId, scope]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function downloadFile(name: string, contents: string, type = "text/csv") {
     const url = URL.createObjectURL(new Blob([contents], { type }));
@@ -121,11 +140,14 @@ export function ReportSection({
 
   return (
     <div className="space-y-4">
+      {loadError && <LoadError message={loadError} onRetry={load} />}
       <div className="flex items-center justify-between">
         <p className={cn("text-sm", dark ? "text-slate-300" : "text-slate-600")}>
           {loading
             ? "Loading reports..."
-            : `${reports.length} report${reports.length === 1 ? "" : "s"} on file`}
+            : loadError
+              ? "Reports could not be loaded"
+              : `${reports.length} report${reports.length === 1 ? "" : "s"} on file`}
         </p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={exportAll} disabled={reports.length === 0}>
@@ -207,7 +229,7 @@ export function ReportSection({
                   </tr>
                 );
               })}
-              {reports.length === 0 && !loading && (
+              {reports.length === 0 && !loading && !loadError && (
                 <tr>
                   <td colSpan={4} className={cn("px-4 py-6 text-center", muted)}>
                     No reports yet.
