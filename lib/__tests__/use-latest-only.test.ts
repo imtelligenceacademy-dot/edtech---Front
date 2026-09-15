@@ -68,6 +68,20 @@ describe("useLatestOnly", () => {
     expect(reopened()).toBe(true);
   });
 
+  it("is the same object on every render", () => {
+    // Load-bearing, not tidiness. Callers hold this inside a `useCallback`, and
+    // that callback is a dependency of the effect that runs it — so a fresh
+    // object each render rebuilds the callback, re-runs the effect, and puts
+    // the component in a refetch loop against the API. The guard would have
+    // caused the thing it guards against.
+    const { result, rerender } = renderHook(() => useLatestOnly());
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
+  });
+
   it("survives a re-render, because a request outlives one", () => {
     const { result, rerender } = renderHook(() => useLatestOnly());
     const inFlight = result.current.claim();

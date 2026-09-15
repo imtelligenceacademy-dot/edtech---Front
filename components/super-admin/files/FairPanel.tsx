@@ -30,6 +30,7 @@ import {
   updateFairSection,
   uploadFairProject,
 } from "@/lib/api";
+import { useLatestOnly } from "@/lib/use-latest-only";
 import { cn } from "@/lib/utils";
 import type { FairProject, FairSection, School } from "@/types";
 
@@ -66,13 +67,14 @@ export function FairPanel() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Which school the newest request was for. Two switches can be in flight at
-  // once, and without this the slower one wins whenever it lands second.
-  const loadingFor = useRef<string | null>(null);
+  // Which school's sections the panel is currently showing. Two switches can be
+  // in flight at once, and without this the slower one wins whenever it lands
+  // second. Shared with the delete dialog on the Files page, which had the same
+  // problem and a second hand-rolled answer to it.
+  const load = useLatestOnly();
 
   const refresh = useCallback(async () => {
-    const forSchool = schoolId;
-    loadingFor.current = forSchool;
+    const isCurrent = load.claim();
 
     // Cleared before the request, not only when it fails. Left standing, the
     // previous school's sections sat on screen — and clickable — under the
@@ -83,24 +85,24 @@ export function FairPanel() {
     // error path, and the success path is the one that happens.
     setSections([]);
     setUnfiled([]);
-    if (!forSchool) return;
+    if (!schoolId) return;
 
     try {
       const [rows, loose] = await Promise.all([
-        listFairSections(forSchool),
+        listFairSections(schoolId),
         listUnfiledFairProjects(),
       ]);
-      if (loadingFor.current !== forSchool) return;
+      if (!isCurrent()) return;
       setSections(rows);
       setUnfiled(loose);
     } catch (err) {
-      if (loadingFor.current !== forSchool) return;
+      if (!isCurrent()) return;
       setMessage({
         tone: "error",
         text: err instanceof Error ? err.message : "Couldn't load sections.",
       });
     }
-  }, [schoolId]);
+  }, [schoolId, load]);
 
   useEffect(() => {
     void refresh();

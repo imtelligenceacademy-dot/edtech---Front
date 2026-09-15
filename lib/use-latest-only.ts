@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 
 /**
  * Ignore the answer to a question that is no longer the one on screen.
@@ -31,11 +31,18 @@ import { useRef } from "react";
  *
  * `retire()` abandons whatever is outstanding without asking anything new — for
  * closing the dialog, so a late answer cannot write itself into the next one.
+ *
+ * The returned object is the same one on every render, which matters more than
+ * it looks: callers keep it inside a `useCallback`, and that callback is a
+ * dependency of the effect that runs it. A fresh object each render would
+ * rebuild the callback each render, re-run the effect each render, and put the
+ * component in a refetch loop against the API — the failure being guarded
+ * against, arrived at through the guard.
  */
 export function useLatestOnly() {
   const latest = useRef(0);
 
-  return {
+  return useMemo(() => ({
     /** Claim the screen for this question. Returns: is it still mine? */
     claim() {
       const mine = ++latest.current;
@@ -45,5 +52,5 @@ export function useLatestOnly() {
     retire() {
       latest.current += 1;
     },
-  };
+  }), []);
 }
