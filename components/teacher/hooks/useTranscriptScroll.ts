@@ -15,6 +15,9 @@ export function useTranscriptScroll(follow: unknown[]) {
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(true);
   const suppressScrollUntilRef = useRef(0);
+  // Where the transcript was the last time it moved, so a scroll can be
+  // asked which direction it went.
+  const lastTopRef = useRef(0);
 
   useEffect(() => {
     if (!atBottomRef.current) return;
@@ -36,8 +39,24 @@ export function useTranscriptScroll(follow: unknown[]) {
   // Track how close to the bottom the transcript is scrolled. Anything within a
   // bubble's height counts as "following along".
   function onTranscriptScroll(e: React.UIEvent<HTMLDivElement>) {
-    if (Date.now() < suppressScrollUntilRef.current) return;
     const el = e.currentTarget;
+    const movedUp = el.scrollTop < lastTopRef.current - 2;
+    lastTopRef.current = el.scrollTop;
+
+    // The window below covers the transcript's own smooth scroll, which
+    // fires an event per frame of the animation and only ever moves
+    // *downward*. Moving up is something only the teacher does, so it is
+    // heard whatever that window says.
+    //
+    // That distinction is the whole fix. Every streamed delta re-ran the
+    // follow effect, which re-armed the window for another 800ms, so
+    // across a long answer it never lapsed once: each scroll event was
+    // discarded, `atBottom` could not go false, and the view was dragged
+    // back down on every chunk. A teacher trying to re-read the previous
+    // answer while this one streamed simply could not, and Jump to latest
+    // never appeared because it renders on `!atBottom`. The promise in
+    // this hook's own doc comment is the opposite of what it did.
+    if (!movedUp && Date.now() < suppressScrollUntilRef.current) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     atBottomRef.current = near;
     setAtBottom((prev) => (prev === near ? prev : near));

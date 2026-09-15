@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   listFairSections,
   listLessons,
@@ -50,40 +50,67 @@ export function useTeacherLessons(session: Session | null, section: string = "")
   // teacher's own school — schools do not share fair projects.
   const [fairSections, setFairSections] = useState<FairSection[]>([]);
 
+  // The class on screen right now, readable from inside a request that
+  // was sent for a different one.
+  //
+  // Every answer below is about one class and none of them is required to
+  // come back in the order it was asked. This races on an ordinary page
+  // load rather than only under bad luck: `session` is null on the first
+  // render, so `section` starts as "" and becomes the real class the
+  // moment the session lands, leaving both rounds of requests in flight
+  // together. The unscoped answer landing second rewrote the lesson list,
+  // every lesson's access status and the progress map with another
+  // class's — lessons this class had finished showing as available, and
+  // the one they were actually on showing as locked.
+  const onScreen = useRef(section);
+  onScreen.current = section;
+  const stillOnScreen = (asked: string) => onScreen.current === asked;
+
   const refreshProgress = useCallback(() => {
+    const asked = section;
     listProgress()
-      .then((rows) =>
+      .then((rows) => {
+        if (!stillOnScreen(asked)) return;
         setProgressByLesson(
           Object.fromEntries(
-            rows.filter((r) => r.section === section).map((r) => [r.lessonId, r])
+            rows.filter((r) => r.section === asked).map((r) => [r.lessonId, r])
           )
-        )
-      )
+        );
+      })
       .catch(() => {});
   }, [section]);
 
   const refreshRequests = useCallback(() => {
+    const asked = section;
     listMyAccessRequests()
-      .then((reqs) =>
+      .then((reqs) => {
+        if (!stillOnScreen(asked)) return;
         setRequestedLessonIds(
           new Set(
             reqs
-              .filter((r) => r.status === "pending" && r.section === section)
+              .filter((r) => r.status === "pending" && r.section === asked)
               .map((r) => r.lessonId)
           )
-        )
-      )
+        );
+      })
       .catch(() => {});
   }, [section]);
 
   // Re-runs when the teacher switches class, because every answer below is
   // about one class and none of it carries over.
   useEffect(() => {
+    const asked = section;
     setLessonsLoaded(false);
-    listLessons(section || undefined)
-      .then(setLessons)
-      .catch(() => setLessons([]))
-      .finally(() => setLessonsLoaded(true));
+    listLessons(asked || undefined)
+      .then((rows) => {
+        if (stillOnScreen(asked)) setLessons(rows);
+      })
+      .catch(() => {
+        if (stillOnScreen(asked)) setLessons([]);
+      })
+      .finally(() => {
+        if (stillOnScreen(asked)) setLessonsLoaded(true);
+      });
     refreshProgress();
     refreshRequests();
     listMyClasses()
@@ -99,7 +126,15 @@ export function useTeacherLessons(session: Session | null, section: string = "")
 
   // Re-pull lesson access state (statuses shift after a completion/unlock).
   function refreshLessons() {
-    listLessons(section || undefined).then(setLessons).catch(() => {});
+    // Read when the refresh is asked for, not when this closure was made:
+    // one issued just before a class switch used to overwrite the new
+    // class's lessons with the old class's.
+    const asked = onScreen.current;
+    listLessons(asked || undefined)
+      .then((rows) => {
+        if (stillOnScreen(asked)) setLessons(rows);
+      })
+      .catch(() => {});
     refreshProgress();
     listMyClasses()
       .then((rows) => setClasses(collapseByClass(rows)))
