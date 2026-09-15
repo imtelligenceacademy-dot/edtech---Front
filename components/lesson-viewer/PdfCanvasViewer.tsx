@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { fetchLessonPdf, saveLessonProgress } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SMALL_SCREEN_QUERY } from "@/lib/teacher/lesson-order";
 import { useBlockSaveShortcuts, useLessonPdf } from "./useLessonPdf";
 
 // In-app PDF viewer (PDF.js → canvas): no browser toolbar (no download/print/
@@ -60,9 +61,11 @@ export function PdfCanvasViewer({
   // repeating both — two headers stacked on a small screen cost a fifth of it
   // to say the same thing twice, with two buttons that did the same thing.
   outerChrome?: boolean;
-  // Scroll a page into view on command. Changing the value is the instruction;
-  // the teacher's controls use it to jump the projector to a page.
-  goToPage?: number;
+  // Scroll a page into view on command. Each new object is one instruction, so
+  // asking twice for the same page asks twice — which a bare number could not
+  // express: React bails out of an identical state value, the dependency never
+  // changed, and the second request was silently dropped.
+  goToPage?: { page: number; seq: number };
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrappersRef = useRef<HTMLDivElement[]>([]);
@@ -114,10 +117,11 @@ export function PdfCanvasViewer({
   }, [status, total]);
 
   useEffect(() => {
+    // One definition of "small screen", shared with the caller that decides
+    // whether to open this full-screen. Spelled out separately in both places,
+    // they were free to mean different things about the same device.
     const detect = () => {
-      setUseNativeMobileViewer(
-        window.matchMedia("(max-width: 768px), (pointer: coarse)").matches
-      );
+      setUseNativeMobileViewer(window.matchMedia(SMALL_SCREEN_QUERY).matches);
     };
     detect();
     window.addEventListener("resize", detect);
@@ -305,7 +309,7 @@ export function PdfCanvasViewer({
   // instant scroll is the one thing every browser honours.
   useEffect(() => {
     if (!goToPage || status !== "ready") return;
-    const wrapper = wrappersRef.current[goToPage - 1];
+    const wrapper = wrappersRef.current[goToPage.page - 1];
     const container = containerRef.current;
     if (wrapper && container) container.scrollTop = wrapper.offsetTop;
   }, [goToPage, status]);

@@ -25,8 +25,16 @@ export default function PresentLessonPage({
   const section = useSearchParams().get("section") ?? undefined;
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // A page the teacher asked us to jump to (from their ‹ › controls).
-  const [goToPage, setGoToPage] = useState<number | undefined>(undefined);
+  // A page the teacher asked us to jump to (from their ‹ › controls), and which
+  // request it was. The number on its own was not an instruction: after the
+  // class had scrolled the projector back a page, pressing Next sent the page
+  // this window had already been told, React bailed out of the identical state,
+  // and the jump effect's dependencies never changed. The board stayed where it
+  // was while the teacher's counter, the slide the assistant answers about, and
+  // anything they then saved as progress all moved on without it.
+  const [goToPage, setGoToPage] = useState<{ page: number; seq: number } | undefined>(
+    undefined
+  );
   const [showHint, setShowHint] = useState(true);
   const channelRef = useRef<PresentChannel | null>(null);
   // The last page either side knows about, so scrolling here and jumping from
@@ -47,7 +55,7 @@ export default function PresentLessonPage({
     const channel = openPresentChannel(lessonId, (message) => {
       if (message.type === "page") {
         syncedPageRef.current = message.page;
-        setGoToPage(message.page);
+        setGoToPage((prev) => ({ page: message.page, seq: (prev?.seq ?? 0) + 1 }));
       }
       if (message.type === "stop") window.close();
     });

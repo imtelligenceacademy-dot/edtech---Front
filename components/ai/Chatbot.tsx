@@ -238,6 +238,15 @@ export function Chatbot({
   const gradeLessons =
     selectedGrade === null ? [] : lessons.filter((l) => l.grade === selectedGrade);
 
+  // The lesson the teacher is actually working in. Presenting deliberately
+  // closes the pane — the PDF is on the projector and this window is the
+  // assistant — so `openedLesson` is null for the whole of a lesson being
+  // taught, which is exactly when these actions get used. Narrower than
+  // `contextLesson` below on purpose: that one falls back to the lesson they
+  // are up to, which is right for grounding a question and wrong for marking
+  // something complete.
+  const activeLesson = openedLesson ?? presenting?.lesson ?? null;
+
   // The lesson a question is grounded in, and the thread it is stored under.
   // With the viewer closed the teacher is still working on a lesson — the one
   // they last had open, or the one they're up to — so questions aren't answered
@@ -455,14 +464,14 @@ export function Chatbot({
 
   // "I finished the lesson" — record the open lesson as complete.
   async function markCurrentComplete() {
-    if (!openedLesson) {
+    if (!activeLesson) {
       setThinking(false);
       pushAssistant(
         "Open a lesson first, then tell me you've finished and I'll mark it complete for you."
       );
       return;
     }
-    const lesson = openedLesson;
+    const lesson = activeLesson;
     try {
       await saveLessonProgress(lesson.id, { complete: true, section });
       refreshLessons();
@@ -485,10 +494,14 @@ export function Chatbot({
     setThinking(false);
     const sorted = [...gradeLessons].sort(byLessonNo);
     let next: Lesson | undefined;
-    if (openedLesson) {
-      const idx = sorted.findIndex((l) => l.id === openedLesson.id);
+    if (activeLesson) {
+      const idx = sorted.findIndex((l) => l.id === activeLesson.id);
       next = idx >= 0 ? sorted[idx + 1] : undefined;
     } else {
+      // Nothing open and nothing on the board: start from the first lesson
+      // this class has not finished. Reached while presenting, this picked the
+      // lesson already on the screen — it is not completed — and re-presented
+      // it, sending the class back to page 1 of the lesson they were on.
       next = sorted.find((l) => l.accessStatus !== "completed");
     }
     if (!next) {
@@ -641,7 +654,17 @@ export function Chatbot({
       openLesson(fresh);
       return;
     }
+    // The same two things `openLesson` does, for the same two reasons.
+    //
+    // Below md the lesson pane is `hidden md:flex`, so setting `openedLesson`
+    // alone put the lesson somewhere a phone does not render it: the rail's
+    // primary button did nothing whatsoever, and the sheet stayed up over the
+    // nothing it had done. And the sheet has to be told to close — `railShown`
+    // is still true with a lesson open, which is what keeps the rail reachable
+    // on a phone, so the effect that closes it never fires here.
+    setRailOpen(false);
     setOpenedLesson(fresh);
+    if (fresh.fileId && isMobileViewport()) setFullscreenLesson(fresh);
   }
 
   // Return to the clean starting screen (grade picker) with an empty session.

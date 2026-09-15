@@ -65,7 +65,24 @@ export function descriptivePart(title: string): string {
     .toLowerCase();
 }
 
+// A screen small enough that the lesson PDF goes to the device's own viewer
+// instead of the in-app canvas.
+//
+// Width only, deliberately. This used to read `(max-width: 768px), (pointer:
+// coarse)`, which is true of every touchscreen regardless of size — so a
+// classroom touch panel or a Surface in tablet mode, 1920px across with memory
+// to spare, was treated as a phone. That matters more than it sounds: the
+// fallback hands over a blob URL to the raw PDF, which is exactly the download
+// and print protection the canvas viewer exists to provide. The projected
+// window renders the same component, so the class saw "open the project with
+// your phone's PDF viewer" on the board instead of the lesson.
+//
+// The canvas viewer is already hardened for small screens — pages fit the
+// viewport, the pixel ratio is capped, far pages are freed — so the question
+// this answers is only whether the screen is a phone's.
+export const SMALL_SCREEN_QUERY = "(max-width: 768px)";
+
 export function isMobileViewport(): boolean {
   if (typeof window === "undefined") return false;
-  return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+  return window.matchMedia(SMALL_SCREEN_QUERY).matches;
 }
