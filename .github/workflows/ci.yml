@@ -40,5 +40,11 @@ jobs:
       - name: Lint
         run: npx next lint
 
+      - name: Test
+        # Component and hook tests. Until these existed the only checks here
+        # were typecheck, lint and a build, none of which can tell you whether a
+        # fix fixed anything - so every frontend change shipped on a read.
+        run: npm test
+
       - name: Build
         run: npm run build

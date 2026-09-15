@@ -10,6 +10,7 @@ import { FairPanel } from "@/components/super-admin/files/FairPanel";
 import { FileTree, type TreeHandlers } from "@/components/super-admin/files/FileTree";
 import { FilesToolbar } from "@/components/super-admin/files/FilesToolbar";
 import { UploadPanel } from "@/components/super-admin/files/UploadPanel";
+import { useLatestOnly } from "@/lib/use-latest-only";
 import {
   bulkDeleteFiles,
   downloadFileSelection,
@@ -59,6 +60,8 @@ export default function FilesPage() {
   const [impact, setImpact] = useState<DeletionImpact | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Which impact question the dialog is currently showing the answer to.
+  const impactQuestion = useLatestOnly();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Anchor for shift-click range selection, per list.
@@ -172,14 +175,28 @@ export default function FilesPage() {
 
   // Opening the dialog asks the server what the selection costs; the dialog
   // shows nothing but a spinner until it knows.
+  //
+  // Two of those questions can be outstanding at once — Cancel stays live while
+  // the impact is still loading, so an admin who gives up on a slow one and
+  // deletes something else has both in flight — and the answers are not
+  // required to come back in the order they were asked. The slower one landing
+  // second overwrote the newer one, which put a description of one selection in
+  // front of a Delete button holding another: the dialog reading "these files
+  // aren't linked to any lesson, so nothing else is affected" over a folder
+  // that takes its lessons, progress and chat history with it.
   async function askToDelete(ids: string[]) {
+    const isCurrent = impactQuestion.claim();
+
     setPendingDelete(ids);
     setImpact(null);
     setDeleteError(null);
     setImpactLoading(true);
     try {
-      setImpact(await fileDeletionImpact(ids));
+      const answer = await fileDeletionImpact(ids);
+      if (!isCurrent()) return;
+      setImpact(answer);
     } catch (err) {
+      if (!isCurrent()) return;
       // No invented numbers. A fabricated all-zero impact used to stand in
       // here, which made the modal say "nothing else is affected" about a
       // delete that cascades lessons, progress and chats — the one claim this
@@ -187,7 +204,7 @@ export default function FilesPage() {
       // error and keeps Delete disabled until a real answer arrives.
       setDeleteError(err instanceof Error ? err.message : "Couldn't check what this removes.");
     } finally {
-      setImpactLoading(false);
+      if (isCurrent()) setImpactLoading(false);
     }
   }
 
@@ -303,7 +320,13 @@ export default function FilesPage() {
 
       <DeleteImpactModal
         open={pendingDelete !== null}
-        onClose={() => setPendingDelete(null)}
+        onClose={() => {
+          // Retires the outstanding question too, so an answer arriving after
+          // the dialog is shut does not write itself into the next one.
+          impactQuestion.retire();
+          setPendingDelete(null);
+          setImpactLoading(false);
+        }}
         impact={impact}
         loading={impactLoading}
         busy={deleteBusy}
