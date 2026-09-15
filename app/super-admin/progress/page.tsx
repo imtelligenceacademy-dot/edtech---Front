@@ -142,7 +142,10 @@ export default function SuperAdminProgressPage() {
 
       {loading ? (
         <Skeleton />
-      ) : teachers.length === 0 ? (
+      ) : error ? null : teachers.length === 0 ? (
+        // Not when the load failed. The error card above already says so,
+        // and this said, underneath it and at the same time, that the
+        // platform has no teacher accounts on it.
         <Card>
           <p className="px-5 py-16 text-center text-sm text-slate-500">
             No teachers yet. Once accounts exist, their progress shows up here.

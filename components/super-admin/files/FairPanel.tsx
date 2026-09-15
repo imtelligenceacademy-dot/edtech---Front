@@ -147,7 +147,11 @@ export function FairPanel() {
         subtitle="Project PDFs, grouped into sections. Each school runs its own fair, so pick the school first."
         action={
           allFileIds.length > 0 ? (
-            <DownloadAll fileIds={allFileIds} school={school} />
+            <DownloadAll
+              fileIds={allFileIds}
+              school={school}
+              onError={(text) => setMessage({ tone: "error", text })}
+            />
           ) : undefined
         }
       />
@@ -236,9 +240,11 @@ export function FairPanel() {
 function DownloadAll({
   fileIds,
   school,
+  onError,
 }: {
   fileIds: string[];
   school: School | null;
+  onError: (text: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -252,6 +258,12 @@ function DownloadAll({
           await downloadFileSelection(
             fileIds,
             `ict-fair-${school?.name ?? "all"}`.replace(/\s+/g, "-").toLowerCase()
+          );
+        } catch (err) {
+          // Said out loud rather than left to the console. A download that
+          // silently does nothing reads as the browser having eaten it.
+          onError(
+            err instanceof Error ? err.message : "Could not download those files."
           );
         } finally {
           setBusy(false);
@@ -509,6 +521,10 @@ function ProjectRow({
                 setBusy(true);
                 try {
                   await downloadLessonPdf(project.fileId!, `${project.title}.pdf`);
+                } catch (err) {
+                  onError(
+                    err instanceof Error ? err.message : "Could not download that PDF."
+                  );
                 } finally {
                   setBusy(false);
                 }

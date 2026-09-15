@@ -140,9 +140,13 @@ export default function SuperAdminAiUsagePage() {
         </Card>
       )}
 
-      {loading || !report ? (
+      {/* `!report` was treated as still loading, and a failed load leaves
+          it null for good — so the page showed its loading skeleton for
+          ever, animating, underneath the error card that said what had
+          happened. Try again and fail again and it does the same. */}
+      {loading ? (
         <Skeleton />
-      ) : report.teachers.length === 0 ? (
+      ) : !report ? null : report.teachers.length === 0 ? (
         <Card>
           <p className="px-5 py-16 text-center text-sm text-slate-500">
             No teacher accounts yet. Once teachers exist, every question they ask

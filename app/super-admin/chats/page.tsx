@@ -53,6 +53,7 @@ export default function SuperAdminChatsPage() {
 
   const [threadsError, setThreadsError] = useState<string | null>(null);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     setOpenThread(null);
@@ -104,8 +105,18 @@ export default function SuperAdminChatsPage() {
 
   async function exportAll() {
     setExporting(true);
+    setExportError(null);
     try {
       await downloadChatExport();
+    } catch (err) {
+      // `downloadChatExport` throws on a non-OK response, and a bare
+      // finally let that rejection reach nothing but the browser console.
+      // The button went "Exporting..." and back, no file was saved, and
+      // the screen said nothing at all — which reads as an export that
+      // worked and a browser that lost the file.
+      setExportError(
+        err instanceof Error ? err.message : "Could not export the chats."
+      );
     } finally {
       setExporting(false);
     }
@@ -132,6 +143,10 @@ export default function SuperAdminChatsPage() {
           </Button>
         }
       />
+
+      {exportError && (
+        <p className="mb-4 text-sm text-red-600">{exportError}</p>
+      )}
 
       {loadError && <LoadError message={loadError} onRetry={load} />}
 

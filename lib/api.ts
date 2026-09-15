@@ -79,19 +79,60 @@ async function refreshAccessToken(): Promise<boolean> {
   return true;
 }
 
+/** A failed request, with the status kept rather than thrown away. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** What to say when the response carried no explanation of its own. */
+function messageForStatus(status: number): string {
+  if (status === 401) return "Your session has expired. Please sign in again.";
+  if (status === 403) return "You do not have access to that.";
+  if (status === 404) return "That could not be found.";
+  if (status >= 500) {
+    return "The server is not responding. Please try again in a moment.";
+  }
+  return "Request failed. Please try again.";
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) return undefined as T;
   const text = await response.text();
-  const data = text ? JSON.parse(text) : undefined;
-  if (!response.ok) {
-    const message =
-      typeof data?.detail === "string"
-        ? data.detail
-        : "Request failed. Please try again.";
-    throw new Error(message);
+
+  // Parsed defensively, and after the status is known. A body that is not
+  // JSON is exactly what a proxy returns when the request never reached
+  // the API — an HTML 502 or 504 page — and parsing it first threw a
+  // SyntaxError that then stood in for the real failure. Every admin
+  // error card read `Unexpected token '<', "<html>..." is not valid JSON`,
+  // including the Files delete dialog, where that string appeared where
+  // the explanation of what the delete removes was supposed to be.
+  //
+  // It also took out the token cleanup: a dead 401 whose refresh answered
+  // with a non-JSON body threw out of the refresh instead of returning
+  // false, so the stale token was never cleared.
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    data = undefined;
   }
-  if (typeof data?.accessToken === "string") {
-    storeAccessToken(data.accessToken);
+  const detail = (data as { detail?: unknown } | undefined)?.detail;
+
+  if (!response.ok) {
+    throw new ApiError(
+      typeof detail === "string" ? detail : messageForStatus(response.status),
+      response.status
+    );
+  }
+  const token = (data as { accessToken?: unknown } | undefined)?.accessToken;
+  if (typeof token === "string") {
+    storeAccessToken(token);
   }
   return data as T;
 }
