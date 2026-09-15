@@ -32,6 +32,10 @@ export default function LessonAccessIndexPage() {
   // "No teachers found." is the empty state for a search that matched
   // nothing; a load that failed has to say so instead.
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A grant that failed is not a load that failed: retrying the page
+  // would be the wrong offer, so this is reported on its own next to the
+  // list it belongs to.
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -58,12 +62,22 @@ export default function LessonAccessIndexPage() {
 
   async function resolve(req: AccessRequest, grant: boolean) {
     setBusy(req.id);
+    setResolveError(null);
     try {
       if (grant) await grantAccessRequest(req.id);
       else await denyAccessRequest(req.id);
       setRequests((cur) => cur.filter((r) => r.id !== req.id));
-    } catch {
-      // leave the request in place if it failed
+    } catch (err) {
+      // Leaving the row in place is right — the request is still
+      // pending — but on its own it is indistinguishable from the click
+      // not registering. Nothing moved, no spinner, no message, so an
+      // admin clicks Grant again, and again, and concludes the button is
+      // broken while the teacher stays blocked. `AttentionPanel` runs
+      // this same operation and has always said so; the two entry points
+      // disagreed about whether a failure was worth mentioning.
+      setResolveError(
+        err instanceof Error ? err.message : "Could not update that request."
+      );
     } finally {
       setBusy(null);
     }
@@ -108,6 +122,9 @@ export default function LessonAccessIndexPage() {
             }
           />
           <CardBody className="divide-y divide-slate-100 p-0">
+            {resolveError && (
+              <p className="px-4 py-3 text-sm text-red-600">{resolveError}</p>
+            )}
             {requests.map((r) => (
               <div key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">

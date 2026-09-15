@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { LoadError } from "@/components/ui/LoadError";
 import { getTeacherAccess, resetTeacherProgress, setLessonOverride } from "@/lib/api";
 import { formatDateOnly } from "@/lib/utils";
 import { gradeTitle, summarizeGrades } from "@/lib/grades";
@@ -55,6 +56,7 @@ export default function TeacherLessonAccessPage() {
 
   function load() {
     setLoading(true);
+    setError(null);
     getTeacherAccess(teacherId)
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load access."))
@@ -121,6 +123,24 @@ export default function TeacherLessonAccessPage() {
   }
 
   if (loading) return null;
+
+  // A failed load is not a missing teacher. The error was being written
+  // into state and then never rendered — it is only printed further down,
+  // inside the branch that requires `data` — so a network blip or an
+  // expired session told the admin the account was gone, about an account
+  // that exists, with no way to try again but the browser's back button.
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Lesson Unlock" subtitle="Could not load this teacher." />
+        <LoadError message={error} onRetry={load} />
+        <Link href="/super-admin/lesson-access" className="mt-4 inline-block text-sm text-brand-600 hover:underline">
+          ← Back to teachers
+        </Link>
+      </>
+    );
+  }
+
   if (!data) {
     return (
       <>
