@@ -44,6 +44,8 @@ export function BackupClient() {
   const [wiping, setWiping] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restoreConfirm, setRestoreConfirm] = useState("");
   const restoreInputRef = useRef<HTMLInputElement>(null);
 
   async function handleWipe() {
@@ -69,6 +71,8 @@ export function BackupClient() {
       const res = await restoreDatabase(restoreFile);
       setResult({ tone: "ok", text: res.message });
       setRestoreFile(null);
+      setRestoreOpen(false);
+      setRestoreConfirm("");
     } catch (e) {
       setResult({ tone: "error", text: e instanceof Error ? e.message : "Restore failed." });
     } finally {
@@ -313,7 +317,14 @@ export function BackupClient() {
               </div>
               {restoreFile && (
                 <div className="mt-3">
-                  <Button variant="danger" onClick={handleRestore} disabled={restoring}>
+                  {/* Asks first. This button replaces every school, account,
+                      lesson and progress record on the platform, and it appears
+                      directly under the filename the moment a file is chosen —
+                      so an admin opening the picker to check which backup they
+                      have finds the destructive control exactly where their
+                      cursor already is. The Wipe beside it, which destroys
+                      strictly less, has always required a typed confirmation. */}
+                  <Button variant="danger" onClick={() => setRestoreOpen(true)} disabled={restoring}>
                     {restoring ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
                     {restoring ? "Restoring…" : "Replace database with this file"}
                   </Button>
@@ -336,6 +347,61 @@ export function BackupClient() {
           </div>
         </CardBody>
       </Card>
+
+      {/* Restore confirmation. Deliberately the same shape as the wipe dialog
+          below: same typed word, same statement of what goes. The one addition
+          is naming the file, because choosing the wrong backup is the likelier
+          mistake here — the danger is not that they meant to keep the data, it
+          is that they meant a different file. */}
+      <Modal
+        open={restoreOpen}
+        onClose={() => {
+          setRestoreOpen(false);
+          setRestoreConfirm("");
+        }}
+        title="Replace the entire database?"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setRestoreOpen(false);
+                setRestoreConfirm("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleRestore}
+              disabled={restoring || restoreConfirm.trim().toUpperCase() !== "REPLACE"}
+            >
+              {restoring ? "Restoring…" : "Replace database"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Everything currently on the platform — <strong>all schools, users,
+          lessons, files, progress, reports and logs</strong> — is discarded and
+          replaced with the contents of:
+        </p>
+        <p className="mt-2 break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800">
+          {restoreFile?.name ?? "no file chosen"}
+        </p>
+        <p className="mt-2 text-sm text-slate-600">
+          Anything recorded since that backup was taken is lost. This cannot be
+          undone — download a fresh backup first if you have not already.
+        </p>
+        <label className="mt-3 block text-xs font-medium text-slate-700">
+          Type <span className="font-mono text-red-600">REPLACE</span> to confirm
+          <input
+            value={restoreConfirm}
+            onChange={(e) => setRestoreConfirm(e.target.value)}
+            className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+          />
+        </label>
+      </Modal>
 
       {/* Wipe confirmation */}
       <Modal
