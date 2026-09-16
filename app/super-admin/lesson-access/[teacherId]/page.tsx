@@ -45,7 +45,14 @@ export default function TeacherLessonAccessPage() {
   const teacherId = params.teacherId;
   const [data, setData] = useState<TeacherAccess | null>(null);
   const [loading, setLoading] = useState(true);
+  // A failed *load* means there is nothing to show, so the page is replaced.
+  // A failed *action* happens on a page that loaded fine and must not take the
+  // teacher's tracks away with it. The early return below cannot tell those
+  // apart from one state, and with both writing here a refused grant replaced
+  // the whole screen with "Could not load this teacher" — about an account
+  // that was on it a moment ago.
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // lessonId being toggled
   // Resetting is destructive and cannot be undone, so the whole-teacher case
   // asks first. A single row does not: it clears one lesson for one class, and
@@ -57,6 +64,7 @@ export default function TeacherLessonAccessPage() {
   function load() {
     setLoading(true);
     setError(null);
+    setActionError(null);
     getTeacherAccess(teacherId)
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load access."))
@@ -76,14 +84,14 @@ export default function TeacherLessonAccessPage() {
 
   async function toggle(lessonId: string, next: boolean, section: string) {
     setBusy(rowKey(lessonId, section));
-    setError(null);
+    setActionError(null);
     try {
       await setLessonOverride(teacherId, lessonId, next, section);
       // Re-fetch: unlocking one lesson can cascade to later lessons in the track.
       const fresh = await getTeacherAccess(teacherId);
       setData(fresh);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update access.");
+      setActionError(e instanceof Error ? e.message : "Could not update access.");
     } finally {
       setBusy(null);
     }
@@ -95,7 +103,7 @@ export default function TeacherLessonAccessPage() {
     const key = scope.lessonId ? rowKey(scope.lessonId, scope.section ?? "") : "all";
     setBusy(key);
     setResetting(true);
-    setError(null);
+    setActionError(null);
     setNotice(null);
     try {
       const r = await resetTeacherProgress(teacherId, scope);
@@ -114,7 +122,7 @@ export default function TeacherLessonAccessPage() {
       );
       setData(await getTeacherAccess(teacherId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not reset progress.");
+      setActionError(e instanceof Error ? e.message : "Could not reset progress.");
     } finally {
       setResetting(false);
       setConfirmingReset(false);
@@ -224,9 +232,9 @@ export default function TeacherLessonAccessPage() {
         </div>
       )}
 
-      {error && (
+      {actionError && (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-          {error}
+          {actionError}
         </p>
       )}
 

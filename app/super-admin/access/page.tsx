@@ -54,6 +54,13 @@ export default function AccessControlPage() {
 
   // A removal throws away teachers' progress, so that one gets confirmed.
   const [preview, setPreview] = useState<BulkAssignmentPreview | null>(null);
+  // The exact change the open preview describes.
+  const [pendingApply, setPendingApply] = useState<{
+    schoolId: string;
+    lessonIds: string[];
+    addTeacherIds: string[];
+    removeTeacherIds: string[];
+  } | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
   const [deletingLesson, setDeletingLesson] = useState<Lesson | null>(null);
@@ -169,19 +176,26 @@ export default function AccessControlPage() {
     setLessons((cur) => cur.map((l) => byId.get(l.id) ?? l));
   }
 
-  async function runApply() {
+  /** The change to apply, captured when it is decided rather than read back
+   *  when the button is pressed. */
+  function pendingChange() {
+    return {
+      schoolId,
+      lessonIds: Array.from(selectedIds),
+      addTeacherIds: edit.addIds,
+      removeTeacherIds: edit.removeIds,
+    };
+  }
+
+  async function runApply(change = pendingChange()) {
     setBusy(true);
     setError(null);
     try {
-      const result = await bulkAssignments({
-        schoolId,
-        lessonIds: Array.from(selectedIds),
-        addTeacherIds: edit.addIds,
-        removeTeacherIds: edit.removeIds,
-      });
+      const result = await bulkAssignments(change);
       applyResult(result.lessons);
       setIntents({});
       setPreview(null);
+      setPendingApply(null);
       setDone(
         `${result.assignmentsAdded} assignment${
           result.assignmentsAdded === 1 ? "" : "s"
@@ -198,21 +212,29 @@ export default function AccessControlPage() {
 
   // Adding is harmless and applies straight away. Removing deletes the
   // teacher's progress, so if any of it is real work, ask first.
+  function closePreview() {
+    setPreview(null);
+    setPendingApply(null);
+  }
+
   async function apply() {
-    if (edit.removes === 0) return runApply();
+    // Captured before the request goes out. The pickers stay live while it is
+    // in flight, so reading these back when the admin presses the confirm
+    // button described one removal and performed another: the modal counted
+    // ten assignments and named the teacher losing progress, and the button
+    // removed twenty, deleting a second teacher's progress that had never been
+    // counted or named.
+    const change = pendingChange();
+    if (edit.removes === 0) return runApply(change);
     setPreviewing(true);
     setError(null);
     try {
-      const result = await previewBulkAssignments({
-        schoolId,
-        lessonIds: Array.from(selectedIds),
-        addTeacherIds: edit.addIds,
-        removeTeacherIds: edit.removeIds,
-      });
+      const result = await previewBulkAssignments(change);
       if (result.progressLost === 0) {
-        await runApply();
+        await runApply(change);
         return;
       }
+      setPendingApply(change);
       setPreview(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't check what this changes.");
@@ -368,14 +390,21 @@ export default function AccessControlPage() {
           so a removal that costs real work gets confirmed. */}
       <Modal
         open={preview !== null}
-        onClose={() => setPreview(null)}
+        onClose={closePreview}
         title="This removes work teachers have done"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setPreview(null)} disabled={busy}>
+            <Button variant="secondary" onClick={closePreview} disabled={busy}>
               Cancel
             </Button>
-            <Button variant="danger" onClick={runApply} disabled={busy}>
+            <Button
+              variant="danger"
+              // The captured change, not a fresh read of the pickers — and not
+              // `onClick={runApply}`, which would hand the click event itself
+              // to the request.
+              onClick={() => pendingApply && void runApply(pendingApply)}
+              disabled={busy || !pendingApply}
+            >
               {busy ? "Applying…" : `Remove ${preview?.removes ?? 0}`}
             </Button>
           </>

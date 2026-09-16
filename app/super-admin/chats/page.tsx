@@ -5,6 +5,7 @@ import { Download, MessageSquare } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { LoadError } from "@/components/ui/LoadError";
+import { useLatestOnly } from "@/lib/use-latest-only";
 import { Button } from "@/components/ui/Button";
 import {
   downloadChatExport,
@@ -54,11 +55,15 @@ export default function SuperAdminChatsPage() {
   const [threadsError, setThreadsError] = useState<string | null>(null);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const transcript = useLatestOnly();
 
   useEffect(() => {
     setOpenThread(null);
     setMessages([]);
     setTranscriptError(null);
+    // And abandon any transcript still in flight: clearing the state it would
+    // land in is not enough, because it lands afterwards.
+    transcript.retire();
     setThreadsError(null);
     // Cleared whichever teacher is now selected, not only when none is. Left
     // standing, one teacher's conversations were listed under another
@@ -85,22 +90,31 @@ export default function SuperAdminChatsPage() {
     return () => {
       current = false;
     };
-  }, [teacherId]);
+  }, [teacherId, transcript]);
 
   function openLessonThread(thread: ChatThread) {
     setOpenThread(thread);
     setMessages([]);
     setTranscriptError(null);
+    // Whose conversation is on screen is not a detail. The guard above covers
+    // the thread *list* only, so a slow transcript could still land under a
+    // different thread's heading — or, after switching the picker, under a
+    // different teacher's name, which is the harm this page's own comment
+    // higher up is written about.
+    const mine = transcript.claim();
     listChatMessages(thread.lessonId, thread.section, teacherId)
-      .then(setMessages)
-      .catch((err) =>
+      .then((rows) => {
+        if (mine()) setMessages(rows);
+      })
+      .catch((err) => {
+        if (!mine()) return;
         // Without this the pane's only empty state is "Loading...", so a
         // transcript that failed sat there loading for as long as anyone left
         // it open.
         setTranscriptError(
           err instanceof Error ? err.message : "Couldn't load this conversation."
-        )
-      );
+        );
+      });
   }
 
   async function exportAll() {
