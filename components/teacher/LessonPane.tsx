@@ -200,6 +200,20 @@ export function LessonPane({
               and a hidden viewer still downloads the whole PDF. */}
           {paneOnScreen && (
             <PdfCanvasViewer
+              // Keyed so a different lesson gets a different viewer.
+              //
+              // The pane swaps this lesson prop without the element moving, so
+              // the viewer re-rendered instead of remounting and kept the state
+              // it had seeded from the first lesson's props: `done` above all,
+              // which rendered a green "Lesson completed" badge over a lesson
+              // that was not, and took the Mark complete button away with it.
+              // `saved` carried the previous lesson's "stopped at slide 9" line
+              // and `current` scrolled the new PDF to the old one's page.
+              //
+              // A key rather than an effect per field, because the next piece
+              // of per-lesson state added here would have to remember to reset
+              // itself and these three did not.
+              key={lesson.id}
               fileId={lesson.fileId as string}
               lessonId={lesson.id}
               section={section}

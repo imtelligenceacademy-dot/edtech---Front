@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LoadError } from "@/components/ui/LoadError";
 import { gradeTitle } from "@/lib/grades";
 import { byLessonNo, courseLabel, groupLessonsByCourse } from "@/lib/teacher/lesson-order";
 import { formatUnlockDate, STARTER_PROMPTS } from "@/lib/teacher/lesson-copy";
@@ -26,6 +27,8 @@ export function WelcomeScreen({
   onPrompt,
   assistant = true,
   requestedLessonIds,
+  loadError = null,
+  onRetry,
   light,
 }: {
   lessons: Lesson[];
@@ -39,6 +42,11 @@ export function WelcomeScreen({
    *  in front of a conversation — so it stops offering one. */
   assistant?: boolean;
   requestedLessonIds: Set<string>;
+  /** Set when the lesson list could not be loaded. An empty list then means
+   *  nothing, and "no lessons assigned for this grade" would be a claim about
+   *  her account made by a failed request. */
+  loadError?: string | null;
+  onRetry?: () => void;
   light: boolean;
 }) {
   const [showCompleted, setShowCompleted] = useState(false);
@@ -84,10 +92,18 @@ export function WelcomeScreen({
         lesson to present it{assistant ? ", or ask me a question." : "."}
       </p>
 
-      {lessons.length === 0 && (
-        <p className={cn("mt-6 text-sm", light ? "text-slate-500" : "text-slate-400")}>
-          No lessons assigned for {gradeTitle(grade)} yet.
-        </p>
+      {loadError ? (
+        <LoadError
+          className="mt-6 w-full max-w-lg border-red-200 bg-red-50/60"
+          message={loadError}
+          onRetry={onRetry}
+        />
+      ) : (
+        lessons.length === 0 && (
+          <p className={cn("mt-6 text-sm", light ? "text-slate-500" : "text-slate-400")}>
+            No lessons assigned for {gradeTitle(grade)} yet.
+          </p>
+        )
       )}
 
       {/* The lesson they're on — one obvious thing to click. */}

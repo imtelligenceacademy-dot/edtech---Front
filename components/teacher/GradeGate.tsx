@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { gradeCardParts } from "@/lib/grades";
 import { lastTaughtGrade } from "@/lib/teacher/prefs";
 import { classStatusLine, PickCard } from "@/components/teacher/PickCard";
+import { LoadError } from "@/components/ui/LoadError";
 import type { ClassSummary } from "@/types";
 
 // Required first step — the teacher must choose which grade they're teaching
@@ -14,6 +15,8 @@ export function GradeGate({
   grades,
   classes,
   loading,
+  loadError = null,
+  onRetry,
   onPick,
   assistant = true,
   light,
@@ -22,6 +25,11 @@ export function GradeGate({
   /** One row per class of each grade — one row for a grade taught once. */
   classes: ClassSummary[];
   loading: boolean;
+  /** Set when the lesson list could not be loaded at all. An empty list then
+   *  means nothing, and saying "you have no lessons" would be a claim about her
+   *  account made by a dropped connection. */
+  loadError?: string | null;
+  onRetry?: () => void;
   onPick: (grade: number) => void;
   /** Whether this teacher has the assistant — a kindergarten teacher does not,
    *  and should not be told their questions will be scoped to anything. */
@@ -65,6 +73,8 @@ export function GradeGate({
         >
           <Loader2 size={16} className="animate-spin" /> Loading your grades…
         </div>
+      ) : loadError ? (
+        <LoadError className="mt-8 w-full border-red-200 bg-red-50/60" message={loadError} onRetry={onRetry} />
       ) : grades.length === 0 ? (
         <p className={cn("mt-8 text-sm", light ? "text-slate-500" : "text-slate-400")}>
           You have no assigned lessons yet. Ask your administrator to assign you a

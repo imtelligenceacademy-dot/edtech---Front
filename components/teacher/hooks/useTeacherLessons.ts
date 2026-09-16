@@ -37,6 +37,11 @@ import type {
 export function useTeacherLessons(session: Session | null, section: string = "") {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lessonsLoaded, setLessonsLoaded] = useState(false);
+  // A failed load is not an empty roster. Without this the catch below wrote []
+  // and every consumer read it as "nothing assigned" — telling a teacher whose
+  // session had expired that she has no lessons, as a statement about her
+  // account, with nothing to retry.
+  const [lessonsError, setLessonsError] = useState<string | null>(null);
   // Self-reported position per lesson, so the welcome screen can offer to
   // resume ("you stopped on slide 8 of 11") instead of just "open".
   const [progressByLesson, setProgressByLesson] = useState<Record<string, ProgressEntry>>({});
@@ -103,10 +108,17 @@ export function useTeacherLessons(session: Session | null, section: string = "")
     setLessonsLoaded(false);
     listLessons(asked || undefined)
       .then((rows) => {
-        if (stillOnScreen(asked)) setLessons(rows);
+        if (stillOnScreen(asked)) {
+          setLessons(rows);
+          setLessonsError(null);
+        }
       })
-      .catch(() => {
-        if (stillOnScreen(asked)) setLessons([]);
+      .catch((err) => {
+        if (!stillOnScreen(asked)) return;
+        setLessons([]);
+        setLessonsError(
+          err instanceof Error ? err.message : "Couldn't load your lessons."
+        );
       })
       .finally(() => {
         if (stillOnScreen(asked)) setLessonsLoaded(true);
@@ -165,6 +177,7 @@ export function useTeacherLessons(session: Session | null, section: string = "")
   return {
     lessons,
     lessonsLoaded,
+    lessonsError,
     progressByLesson,
     requestedLessonIds,
     classes,

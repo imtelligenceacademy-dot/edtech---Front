@@ -191,6 +191,7 @@ export function Chatbot({
   const {
     lessons,
     lessonsLoaded,
+    lessonsError,
     progressByLesson,
     requestedLessonIds,
     classes,
@@ -832,6 +833,8 @@ export function Chatbot({
               grades={availableGrades}
               classes={classes}
               loading={!lessonsLoaded}
+              loadError={lessonsError}
+              onRetry={refreshLessons}
               onPick={chooseGrade}
               assistant={!assistantHidden}
               light={light}
@@ -858,6 +861,8 @@ export function Chatbot({
               onPrompt={(text) => send(text)}
               assistant={!assistantHidden}
               requestedLessonIds={requestedLessonIds}
+              loadError={lessonsError}
+              onRetry={refreshLessons}
               light={light}
             />
           ) : (

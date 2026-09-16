@@ -11,6 +11,7 @@ import {
   Presentation,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/DashboardShell";
+import { LoadError } from "@/components/ui/LoadError";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { listLessons, listProgress } from "@/lib/api";
@@ -119,15 +120,28 @@ export default function TeacherProgressPage() {
   const [progress, setProgress] = useState<ProgressEntry[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
+    setLoading(true);
     Promise.all([listProgress(), listLessons()])
       .then(([progressRows, lessonRows]) => {
         setProgress(progressRows);
         setLessons(lessonRows);
+        setError(null);
       })
-      .catch(() => {})
+      // Swallowed, this page went on to report "Lessons completed: 0" and "You
+      // haven't completed a lesson yet" — her own year's record, stated as fact,
+      // to a teacher whose session had simply expired.
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Couldn't load your progress.")
+      )
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const lessonOf = (p: ProgressEntry) => lessons.find((l) => l.id === p.lessonId);
@@ -196,6 +210,23 @@ export default function TeacherProgressPage() {
           <div className="h-[92px] animate-pulse rounded-xl bg-slate-100" />
         </div>
         <div className="h-40 animate-pulse rounded-xl bg-slate-100" />
+      </>
+    );
+  }
+
+  // A failed load is not an empty year. Returned before the cards, because
+  // every one of them below reads an empty list as a fact about her teaching.
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Your progress" subtitle="Your finished lessons and where you left off." />
+        <LoadError message={error} onRetry={load} />
+        <Link
+          href={TEACHER_HOME}
+          className="mt-4 inline-block text-sm text-brand-600 hover:underline"
+        >
+          ← Back to lessons
+        </Link>
       </>
     );
   }
