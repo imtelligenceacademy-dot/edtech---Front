@@ -90,6 +90,25 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A failure the assistant reported mid-stream, with whether asking the same
+ * question again could possibly answer it.
+ *
+ * The server decides, because only the server knows which it was: a busy
+ * provider is worth another go, a spent allowance or a refused request is not.
+ * `retryable` defaults to true when the field is absent, so a client running
+ * against an older server behaves exactly as it did before.
+ */
+export class AiStreamError extends Error {
+  readonly retryable: boolean;
+
+  constructor(message: string, retryable: boolean) {
+    super(message);
+    this.name = "AiStreamError";
+    this.retryable = retryable;
+  }
+}
+
 /** What to say when the response carried no explanation of its own. */
 function messageForStatus(status: number): string {
   if (status === 401) return "Your session has expired. Please sign in again.";
@@ -698,13 +717,19 @@ async function streamSSE(
     for (const evt of events) {
       const line = evt.split("\n").find((l) => l.startsWith("data: "));
       if (!line) continue;
-      let obj: { delta?: string; sourceRef?: string; done?: boolean; error?: string };
+      let obj: {
+        delta?: string;
+        sourceRef?: string;
+        done?: boolean;
+        error?: string;
+        retryable?: boolean;
+      };
       try {
         obj = JSON.parse(line.slice(6));
       } catch {
         continue;
       }
-      if (obj.error) throw new Error(obj.error);
+      if (obj.error) throw new AiStreamError(obj.error, obj.retryable !== false);
       if (obj.sourceRef && handlers.onMeta) handlers.onMeta({ sourceRef: obj.sourceRef });
       if (obj.delta) handlers.onDelta(obj.delta);
       if (obj.done) return;

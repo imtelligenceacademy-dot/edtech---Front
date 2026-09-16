@@ -121,8 +121,22 @@ export function usePresenter(callbacks: Callbacks) {
     );
   }
 
+  /** Put the pop-up warning away.
+   *
+   * It is advice, not state. Once the teacher has read it and decided to teach
+   * from this window instead, it is a row of the screen saying nothing — and it
+   * was only ever cleared by a *successful* Present, so every other way out of
+   * that state left it pinned there for the rest of the session. On the short
+   * landscape-phone layout that row is one the composer needs.
+   */
+  function dismissPresentBlocked() {
+    setPresentBlocked(false);
+  }
+
   function stop(closeWindow = true) {
     cancelByeTimer();
+    // Whatever the warning was about is over.
+    setPresentBlocked(false);
     if (closeWindow) {
       channelRef.current?.post({ type: "stop" });
       closeWindowQuietly();
@@ -201,6 +215,7 @@ export function usePresenter(callbacks: Callbacks) {
     presenting,
     presentingRef,
     presentBlocked,
+    dismissPresentBlocked,
     startPresenting: start,
     stopPresenting: stop,
     goToPage,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { streamTeacherAI } from "@/lib/api";
+import { AiStreamError, streamTeacherAI } from "@/lib/api";
 import type { AIMessage } from "@/types";
 
 type Thread = {
@@ -140,7 +140,21 @@ export function useAiAnswer(thread: Thread) {
           : reason,
         { lessonId: threadId, section: threadSection }
       );
-      setFailed({ text, lessonId: threadId, section: threadSection });
+      // Offer the retry only for a failure that could answer differently. The
+      // server says which — a busy provider yes, a spent allowance or a refused
+      // request no — and anything that isn't an assistant failure at all (a
+      // dropped connection) is worth another go by default.
+      //
+      // Offered for everything, the button sat directly under "you've reached
+      // the hourly limit" and returned that same sentence, while the quota note
+      // under the composer already said there were none left.
+      if (!(err instanceof AiStreamError) || err.retryable) {
+        setFailed({ text, lessonId: threadId, section: threadSection });
+      } else {
+        // Clear any earlier offer too: it belongs to a question the teacher can
+        // no longer ask.
+        setFailed(null);
+      }
     } finally {
       setThinking(false);
       setStreaming(false);

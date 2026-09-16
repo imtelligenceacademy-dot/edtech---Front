@@ -219,6 +219,7 @@ export function Chatbot({
     presenting,
     presentingRef,
     presentBlocked,
+    dismissPresentBlocked,
     startPresenting,
     stopPresenting,
     goToPage,
@@ -906,9 +907,19 @@ export function Chatbot({
           />
         )}
         {presentBlocked && (
-          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] text-amber-800 sm:px-8">
-            Your browser blocked the presentation window. Allow pop-ups for this
-            site, then press Present again.
+          <div className="flex items-start gap-3 border-t border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] text-amber-800 sm:px-8">
+            <span className="flex-1">
+              Your browser blocked the presentation window. Allow pop-ups for
+              this site, then press Present again.
+            </span>
+            <button
+              type="button"
+              onClick={dismissPresentBlocked}
+              aria-label="Dismiss"
+              className="-my-0.5 shrink-0 rounded p-0.5 text-amber-700 transition hover:bg-amber-100 hover:text-amber-900"
+            >
+              <X size={13} />
+            </button>
           </div>
         )}
 
