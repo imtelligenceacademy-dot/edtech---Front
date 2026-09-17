@@ -120,8 +120,13 @@ export function useChatThread(contextLessonId: string | null, section: string = 
   // Wipe this class's conversation about this lesson, on the server and on
   // screen. Other lessons, and the same lesson in the teacher's other classes,
   // are untouched.
-  async function clearThread(onError: (message: string) => void) {
-    const lessonId = contextLessonRef.current;
+  async function clearThread(
+    onError: (message: string) => void,
+    // Which thread to clear. Defaults to the one in play, but the caller can
+    // name it — the rail's button is labelled with the card's lesson, and that
+    // is not always the lesson the assistant is currently grounded in.
+    lessonId: string | null = contextLessonRef.current
+  ) {
     if (!lessonId) return;
     const forClass = sectionRef.current;
     setMessages((prev) =>

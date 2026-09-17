@@ -185,6 +185,13 @@ export function Chatbot({
   // conversation and no lesson controls at all.
   const railMobileOnly = railUsable && !!openedLesson;
   const railShown = railAvailable || railMobileOnly;
+  // Where the rail stops being a sheet — written once and used by both the rail
+  // and the backdrop that dims it. Written out separately they disagreed: the
+  // rail hides at md when a lesson is open, the backdrop hid at xl in every
+  // case, so between 768px and 1279px with a lesson open the backdrop covered
+  // the whole app with no rail on it. Rotating a phone to landscape is enough
+  // to get there, and nothing on screen then says how to get out.
+  const railSheetHidden = railMobileOnly ? "md:hidden" : "xl:hidden";
 
   // The teacher's lessons, their progress in them, and their access requests —
   // all for the class in front of them.
@@ -255,9 +262,21 @@ export function Chatbot({
   // with "open a lesson first". Only an available lesson counts: the backend
   // refuses locked and completed ones.
   const contextLesson = ((): Lesson | null => {
-    if (openedLesson) return openedLesson;
-    if (presenting) return presenting.lesson;
     const isOpenable = (l: Lesson) => (l.accessStatus ?? "available") === "available";
+    // Re-read from the refreshed list rather than trusted as held. Completing a
+    // lesson from the chat refreshes `lessons` but resyncs neither
+    // `openedLesson` nor `presenting.lesson`, so both kept the "available" they
+    // were opened with — and every question after "I've finished the lesson"
+    // was grounded in a lesson this file states twice that the backend refuses.
+    const fresh = (l: Lesson) => gradeLessons.find((g) => g.id === l.id) ?? l;
+    if (openedLesson) {
+      const current = fresh(openedLesson);
+      if (isOpenable(current)) return current;
+    }
+    if (presenting) {
+      const current = fresh(presenting.lesson);
+      if (isOpenable(current)) return current;
+    }
     // Searched within this grade, not the whole assignment list: the lesson
     // last opened may belong to another grade entirely, and grounding a Grade 5
     // question in it filed the answer under Grade 5's neighbour.
@@ -975,7 +994,10 @@ export function Chatbot({
       {railShown && railOpen && (
         <div
           onClick={() => setRailOpen(false)}
-          className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-[1px] xl:hidden"
+          className={cn(
+            "fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-[1px]",
+            railSheetHidden
+          )}
           aria-hidden
         />
       )}
@@ -998,7 +1020,7 @@ export function Chatbot({
           light
             ? "border-slate-200/60 bg-white xl:bg-white/40"
             : "border-white/5 bg-slate-900 xl:bg-slate-950/40",
-          railAvailable ? "flex" : railMobileOnly ? "flex md:hidden" : "hidden",
+          railAvailable ? "flex" : railMobileOnly ? `flex ${railSheetHidden}` : "hidden",
           railOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
@@ -1084,9 +1106,14 @@ export function Chatbot({
                 >
                   <Maximize2 size={13} /> Full screen
                 </button>
-                {contextLessonId && !assistantHidden && (
+                {!assistantHidden && (
                   <button
-                    onClick={() => clearThread(pushAssistant)}
+                    // The card's own lesson, not whatever the assistant is
+                    // grounded in. Those part company as soon as this lesson is
+                    // completed — the card still shows it, the context has moved
+                    // to the next openable one — and this button then deleted a
+                    // thread it was not named after, irreversibly.
+                    onClick={() => clearThread(pushAssistant, panelLesson.id)}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs transition",
                       light
