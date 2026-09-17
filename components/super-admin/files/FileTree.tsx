@@ -204,6 +204,13 @@ export function FileTree({ tree, h }: { tree: Tree; h: TreeHandlers }) {
     <div className="space-y-2 p-3">
       {tree.years.map((year) => {
         const yearKey = `y${year.year}`;
+        // One string, used for both the spinner and the request. They were
+        // written out separately and did not match (`y2` against `year-2`), so
+        // the equality below was never true: Zip on a whole year — several
+        // hundred PDFs and a server-side archive build — showed no spinner and
+        // stayed enabled, which reads as a click that missed and invites a
+        // second full build.
+        const yearLabel = `year-${year.year}`;
         const open = h.isOpen(yearKey);
         const ids = idsOf(year.nodes);
         return (
@@ -225,9 +232,9 @@ export function FileTree({ tree, h }: { tree: Tree; h: TreeHandlers }) {
               actions={
                 <DownloadGroupButton
                   count={ids.length}
-                  busy={h.downloading === yearKey}
+                  busy={h.downloading === yearLabel}
                   what={`all of Year ${year.year}`}
-                  onClick={() => h.onDownloadGroup(ids, `year-${year.year}`)}
+                  onClick={() => h.onDownloadGroup(ids, yearLabel)}
                 />
               }
             />
@@ -235,6 +242,7 @@ export function FileTree({ tree, h }: { tree: Tree; h: TreeHandlers }) {
               <div className="space-y-1.5 border-t border-slate-200 bg-white p-2">
                 {year.grades.map((grade) => {
                   const gradeKey = `${yearKey}-g${grade.grade}`;
+                  const gradeLabel = `year-${year.year}-grade-${grade.grade}`;
                   const gradeOpen = h.isOpen(gradeKey);
                   const gradeIds = idsOf(grade.nodes);
                   const sections: [LangKey, FileNode[]][] = (
@@ -264,11 +272,9 @@ export function FileTree({ tree, h }: { tree: Tree; h: TreeHandlers }) {
                         actions={
                           <DownloadGroupButton
                             count={gradeIds.length}
-                            busy={h.downloading === gradeKey}
+                            busy={h.downloading === gradeLabel}
                             what={gradeTitle(grade.grade)}
-                            onClick={() =>
-                              h.onDownloadGroup(gradeIds, `year-${year.year}-grade-${grade.grade}`)
-                            }
+                            onClick={() => h.onDownloadGroup(gradeIds, gradeLabel)}
                           />
                         }
                       />

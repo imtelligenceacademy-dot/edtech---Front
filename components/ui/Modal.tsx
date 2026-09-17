@@ -21,7 +21,17 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6">
       {/* Flex column with a capped height so the body scrolls while the header
           and footer (with its action buttons) stay visible on tall forms. */}
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl">
+      <div
+        // Named as a dialog so assistive technology announces it as one, and so
+        // a test can ask what is *inside* it. Without that boundary there was no
+        // way to tell a message rendered in the dialog from one rendered on the
+        // page behind it — which is a distinction a sighted user makes purely
+        // from stacking, and which nothing else in the markup expressed.
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl"
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
           <button

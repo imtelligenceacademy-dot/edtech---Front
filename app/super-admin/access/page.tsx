@@ -64,6 +64,12 @@ export default function AccessControlPage() {
   const [previewing, setPreviewing] = useState(false);
 
   const [deletingLesson, setDeletingLesson] = useState<Lesson | null>(null);
+  // Reported inside the modal. `error` renders only in ApplyBar, which is a
+  // z-40 strip at the bottom of the viewport — underneath this modal's own
+  // z-50 scrim — so a refused delete put its only explanation somewhere the
+  // admin could not see, and the button going from "Deleting…" back to "Delete
+  // lesson" read as a click that had not registered.
+  const [deleteLessonError, setDeleteLessonError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const lastTouched = useRef<string | null>(null);
@@ -246,7 +252,7 @@ export default function AccessControlPage() {
   async function confirmDeleteLesson() {
     if (!deletingLesson) return;
     setDeleteBusy(true);
-    setError(null);
+    setDeleteLessonError(null);
     try {
       const removedId = deletingLesson.id;
       await deleteLesson(removedId);
@@ -258,7 +264,9 @@ export default function AccessControlPage() {
       });
       setDeletingLesson(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete lesson.");
+      setDeleteLessonError(
+        err instanceof Error ? err.message : "Could not delete lesson."
+      );
     } finally {
       setDeleteBusy(false);
     }
@@ -438,11 +446,20 @@ export default function AccessControlPage() {
 
       <Modal
         open={deletingLesson !== null}
-        onClose={() => setDeletingLesson(null)}
+        onClose={() => {
+          setDeletingLesson(null);
+          setDeleteLessonError(null);
+        }}
         title="Delete lesson"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDeletingLesson(null)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setDeletingLesson(null);
+                setDeleteLessonError(null);
+              }}
+            >
               Cancel
             </Button>
             <Button variant="danger" onClick={confirmDeleteLesson} disabled={deleteBusy}>
@@ -457,6 +474,11 @@ export default function AccessControlPage() {
           removes it from every teacher and their progress on it, and deletes its PDF. This
           cannot be undone.
         </p>
+        {deleteLessonError && (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {deleteLessonError}
+          </p>
+        )}
       </Modal>
     </>
   );

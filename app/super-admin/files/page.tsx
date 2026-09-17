@@ -214,14 +214,29 @@ export default function FilesPage() {
     setDeleteError(null);
     try {
       await bulkDeleteFiles(pendingDelete);
-      await refresh();
-      const removed = new Set(pendingDelete);
-      setSelected((cur) => new Set(Array.from(cur).filter((id) => !removed.has(id))));
-      setPendingDelete(null);
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed.");
-    } finally {
       setDeleteBusy(false);
+      return;
+    }
+
+    // Past this line the delete has happened. Reloading the list is how the
+    // screen catches up, and it can fail on its own — a dropped connection, an
+    // expired session — which used to land in the same catch and be reported as
+    // "Delete failed", with the impact numbers still on screen under "This
+    // cannot be undone". The admin read a destroyed grade as an untouched one.
+    const removed = new Set(pendingDelete);
+    setSelected((cur) => new Set(Array.from(cur).filter((id) => !removed.has(id))));
+    setPendingDelete(null);
+    setDeleteBusy(false);
+    try {
+      await refresh();
+    } catch (err) {
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : "The files were deleted, but the list could not be reloaded."
+      );
     }
   }
 

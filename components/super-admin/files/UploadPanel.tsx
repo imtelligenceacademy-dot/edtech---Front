@@ -194,17 +194,31 @@ export function UploadPanel({ onUploaded }: { onUploaded: () => Promise<void> | 
     const queue = [...staged];
     await Promise.all([worker(queue), worker(queue), worker(queue)]);
 
-    await onUploaded();
+    // The uploads are done. Reloading the page's file list is the caller's
+    // business and can fail on its own — and when it did, this function simply
+    // stopped: `busy` stayed true with both Upload and Cancel disabled, the
+    // panel read "Uploading 12 of 12…" for ever, and the per-file outcomes the
+    // admin uploaded in order to read were thrown away. Only a page reload got
+    // out of it.
+    let reloadFailed: string | null = null;
+    try {
+      await onUploaded();
+    } catch (err) {
+      reloadFailed =
+        err instanceof Error ? err.message : "The file list could not be reloaded.";
+    }
+
     setBusy(false);
     setStaged([]);
     setPreview(null);
     setResults(outcomes.sort((a, b) => Number(a.ok) - Number(b.ok)));
     const failed = outcomes.filter((o) => !o.ok).length;
+    const summary = failed
+      ? `${outcomes.length - failed} uploaded · ${failed} need attention`
+      : `${outcomes.length} uploaded`;
     setMessage({
-      tone: failed ? "error" : "ok",
-      text: failed
-        ? `${outcomes.length - failed} uploaded · ${failed} need attention`
-        : `${outcomes.length} uploaded`,
+      tone: failed || reloadFailed ? "error" : "ok",
+      text: reloadFailed ? `${summary} — ${reloadFailed}` : summary,
     });
   }
 

@@ -12,11 +12,12 @@
  * is why this flow has a confirmation at all.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
   bulkAssignments,
+  deleteLesson,
   listLessons,
   listSchools,
   listUsers,
@@ -33,6 +34,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     listUsers: vi.fn(),
     previewBulkAssignments: vi.fn(),
     bulkAssignments: vi.fn(),
+    deleteLesson: vi.fn(),
   };
 });
 
@@ -46,6 +48,7 @@ const schoolsMock = vi.mocked(listSchools);
 const usersMock = vi.mocked(listUsers);
 const previewMock = vi.mocked(previewBulkAssignments);
 const applyMock = vi.mocked(bulkAssignments);
+const deleteLessonMock = vi.mocked(deleteLesson);
 
 const LESSON = {
   id: "les_1",
@@ -122,5 +125,35 @@ describe("bulk assignment", () => {
     // The heart of it: what was applied is what was described.
     expect(applied.removeTeacherIds).toEqual(previewed.removeTeacherIds);
     expect(applied.removeTeacherIds).not.toContain("u_b");
+  });
+});
+
+describe("deleting a lesson", () => {
+  it("reports a refusal where the admin is actually looking", async () => {
+    // `error` renders only inside ApplyBar — a z-40 strip pinned to the bottom
+    // of the viewport, underneath this modal's own z-50 scrim. Reported there,
+    // a refused delete was invisible, and the button returning from "Deleting…"
+    // to "Delete lesson" read as a click that never registered.
+    deleteLessonMock.mockRejectedValue(new Error("That lesson is still assigned."));
+
+    render(<AccessPage />);
+    const user = userEvent.setup();
+    await screen.findByText(/Grade 7 python lesson 01/i);
+
+    const trash = screen.getAllByRole("button", { name: /delete/i })[0];
+    await user.click(trash);
+
+    const confirm = await screen.findByRole("button", { name: /^Delete lesson$/i });
+    await user.click(confirm);
+
+    // Inside the dialog, specifically. The page renders it elsewhere too — in
+    // a bar pinned to the bottom of the viewport, underneath this dialog's own
+    // scrim — and jsdom has no stacking, so asserting only that the text exists
+    // somewhere would pass against the bug.
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect(within(dialog).getByText(/still assigned/i)).toBeInTheDocument()
+    );
+    expect(within(dialog).getByRole("button", { name: /^Delete lesson$/i })).toBeInTheDocument();
   });
 });

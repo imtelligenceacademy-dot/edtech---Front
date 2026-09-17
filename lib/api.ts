@@ -184,6 +184,33 @@ export async function apiFetch<T>(
   return parseResponse<T>(response);
 }
 
+/**
+ * A failed binary download, described by the server rather than by the caller.
+ *
+ * The download helpers each threw a sentence of their own on any non-OK
+ * response, discarding the status and whatever the server said. An expired
+ * session therefore read as "Could not generate the backup." on one screen,
+ * "Could not build the PDF archive." on the same screen, and "Could not export
+ * the chat history." on another — three descriptions of one 401, all of which
+ * sound like a server fault, so the admin retried instead of signing in. The
+ * dead token was left in storage too, which keeps bouncing them back into an
+ * app they can no longer talk to.
+ *
+ * `parseResponse` has done this properly since 43f9aa7; these paths cannot use
+ * it because the success case is bytes, not JSON.
+ */
+async function failedDownload(response: Response, fallback: string): Promise<never> {
+  if (response.status === 401) clearAccessToken();
+  let detail = "";
+  try {
+    const data = await response.json();
+    if (typeof data?.detail === "string") detail = data.detail;
+  } catch {
+    // Not JSON — an HTML 502 from a proxy, or an empty body.
+  }
+  throw new ApiError(detail || messageForStatus(response.status) || fallback, response.status);
+}
+
 // --- Saving a server file to disk ------------------------------------------ #
 // The API is on another origin, so <a download> is ignored and the browser just
 // opens the PDF in a tab. Fetching the bytes with the auth cookie and handing
@@ -222,7 +249,7 @@ export async function downloadDatabase(retried = false): Promise<void> {
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return downloadDatabase(true);
   }
-  if (!res.ok) throw new Error("Could not generate the backup.");
+  if (!res.ok) await failedDownload(res, "Could not generate the backup.");
 
   const blob = await res.blob();
   saveBlob(blob, filenameFromResponse(res) ?? (await inferBackupFilename(blob)));
@@ -238,7 +265,7 @@ export async function downloadFilesArchive(retried = false): Promise<void> {
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return downloadFilesArchive(true);
   }
-  if (!res.ok) throw new Error("Could not build the PDF archive.");
+  if (!res.ok) await failedDownload(res, "Could not build the PDF archive.");
 
   saveBlob(
     await res.blob(),
@@ -475,7 +502,7 @@ export async function downloadChatExport(retried = false): Promise<void> {
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return downloadChatExport(true);
   }
-  if (!res.ok) throw new Error("Could not export the chat history.");
+  if (!res.ok) await failedDownload(res, "Could not export the chat history.");
 
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -837,7 +864,7 @@ export async function downloadReport(
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return downloadReport(variant, schoolId, true);
   }
-  if (!res.ok) throw new Error("Could not generate the report.");
+  if (!res.ok) await failedDownload(res, "Could not generate the report.");
 
   const cd = res.headers.get("Content-Disposition") ?? "";
   const match = cd.match(/filename\*=UTF-8''([^;]+)/);
@@ -1008,7 +1035,7 @@ export async function downloadLessonPdf(
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return downloadLessonPdf(fileId, filename, true);
   }
-  if (!res.ok) throw new Error("Could not download that PDF.");
+  if (!res.ok) await failedDownload(res, "Could not download that PDF.");
   saveBlob(await res.blob(), filenameFromResponse(res) ?? filename);
 }
 
