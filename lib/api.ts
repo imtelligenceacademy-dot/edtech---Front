@@ -995,16 +995,37 @@ export function fileDownloadUrl(fileId: string): string {
   return `${API_BASE_URL}/api/files/${fileId}/download`;
 }
 
+// The same bytes, from a URL that does not say "download" and comes back with
+// no `Content-Disposition`. Download-manager extensions match on both of those
+// and hijack the request, which cancels the page's own and leaves the reader
+// showing "Failed to fetch". Anything that genuinely saves a file keeps
+// `fileDownloadUrl`; anything that renders in the page uses this.
+export function fileViewUrl(fileId: string): string {
+  return `${API_BASE_URL}/api/files/${fileId}/view`;
+}
+
 // Fetches the raw PDF bytes (with the auth cookie + one refresh retry) so the
 // in-app PDF.js viewer can render them — no browser download UI involved.
 export async function fetchLessonPdf(
   fileId: string,
   retried = false
 ): Promise<ArrayBuffer> {
-  const res = await fetch(fileDownloadUrl(fileId), {
-    credentials: "include",
-    headers: withAuthHeaders(),
-  });
+  let res: Response;
+  try {
+    res = await fetch(fileViewUrl(fileId), {
+      credentials: "include",
+      headers: withAuthHeaders(),
+    });
+  } catch {
+    // Not an HTTP error — the browser never got a response at all. `fetch`
+    // rejects with a bare "Failed to fetch", which tells a teacher nothing, and
+    // the cause we have actually seen is a download manager claiming the
+    // request. Name it, because the fix is hers to make.
+    throw new Error(
+      "Could not load the lesson PDF. If a download manager such as IDM is " +
+        "running, disable its extension for this site and reload the page."
+    );
+  }
   if (res.status === 401 && !retried) {
     if (await refreshAccessToken()) return fetchLessonPdf(fileId, true);
   }
