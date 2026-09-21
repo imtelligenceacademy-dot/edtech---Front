@@ -95,6 +95,7 @@ beforeEach(() => {
 });
 
 const composer = () => screen.queryByPlaceholderText(/Message IM-Telligence AI/);
+const newChat = () => screen.queryByTitle("Start a new session");
 
 describe("the assistant on a kindergarten page", () => {
   it("is not offered, to a teacher who has it everywhere else", async () => {
@@ -111,5 +112,31 @@ describe("the assistant on a kindergarten page", () => {
     await waitFor(() => screen.getByText(/No lessons assigned/));
 
     expect(composer()).toBeInTheDocument();
+  });
+});
+
+describe("the header's new-chat button", () => {
+  /**
+   * It followed the composer, so hiding the assistant took it away too — and a
+   * kindergarten teacher lost the only control that closes the lesson she has
+   * open and puts her back on her list. The two are separate concerns: one
+   * clears a conversation she does not have, the other is navigation everyone
+   * needs.
+   */
+  it("is there on a kindergarten page, the same as on any other grade", async () => {
+    render(<Chatbot grade={KG2} />);
+
+    await waitFor(() => screen.getByText(/No lessons assigned/));
+
+    expect(composer()).toBeNull();
+    expect(newChat()).toBeInTheDocument();
+  });
+
+  it("is there on a Grade 1 page", async () => {
+    render(<Chatbot grade={GRADE_1} />);
+
+    await waitFor(() => screen.getByText(/No lessons assigned/));
+
+    expect(newChat()).toBeInTheDocument();
   });
 });

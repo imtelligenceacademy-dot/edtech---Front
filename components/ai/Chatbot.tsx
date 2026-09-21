@@ -831,9 +831,12 @@ export function Chatbot({
       >
         <ChatHeader
           session={session}
+          // Not gated on the assistant. The button reads "New chat", but
+          // `resetSession` also closes the open lesson and goes back to the
+          // teacher home — which is the part a kindergarten teacher needs, and
+          // she had no way to reach it while this followed the composer.
           canStartNewChat={
-            !assistantHidden &&
-            (selectedGrade !== null || messages.length > 0 || showFairProjects)
+            selectedGrade !== null || messages.length > 0 || showFairProjects
           }
           onNewChat={resetSession}
           showFairProjects={showFairProjects}
