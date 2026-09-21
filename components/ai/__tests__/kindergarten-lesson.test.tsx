@@ -96,6 +96,7 @@ beforeEach(() => {
 
 const composer = () => screen.queryByPlaceholderText(/Message IM-Telligence AI/);
 const newChat = () => screen.queryByTitle("Start a new session");
+const backToLessons = () => screen.queryByTitle("Back to your lessons");
 
 describe("the assistant on a kindergarten page", () => {
   it("is not offered, to a teacher who has it everywhere else", async () => {
@@ -123,20 +124,25 @@ describe("the header's new-chat button", () => {
    * clears a conversation she does not have, the other is navigation everyone
    * needs.
    */
-  it("is there on a kindergarten page, the same as on any other grade", async () => {
+  it("is there on a kindergarten page, under the name of what it does", async () => {
     render(<Chatbot grade={KG2} />);
 
     await waitFor(() => screen.getByText(/No lessons assigned/));
 
     expect(composer()).toBeNull();
-    expect(newChat()).toBeInTheDocument();
+    expect(backToLessons()).toBeInTheDocument();
+    expect(screen.getByText("My lessons")).toBeInTheDocument();
+    // "New chat" would name a conversation this teacher cannot have.
+    expect(newChat()).toBeNull();
   });
 
-  it("is there on a Grade 1 page", async () => {
+  it("is a new chat on a Grade 1 page, where there is one to start", async () => {
     render(<Chatbot grade={GRADE_1} />);
 
     await waitFor(() => screen.getByText(/No lessons assigned/));
 
     expect(newChat()).toBeInTheDocument();
+    expect(screen.getByText("New chat")).toBeInTheDocument();
+    expect(backToLessons()).toBeNull();
   });
 });

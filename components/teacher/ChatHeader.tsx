@@ -3,7 +3,7 @@
 // BookOpen, not Presentation: the ICT Fair button beside this one already uses
 // Presentation, and below sm both labels are hidden — two identical icons would
 // be two guesses.
-import { BookOpen, Plus } from "lucide-react";
+import { ArrowLeft, BookOpen, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FairButton } from "@/components/teacher/FairProjects";
 import { UserMenu } from "@/components/teacher/UserMenu";
@@ -89,7 +89,11 @@ export function ChatHeader({
       {canStartNewChat && (
         <button
           onClick={onNewChat}
-          title="Start a new session"
+          // Same button, two honest names. It clears the conversation and goes
+          // back to the lesson list; where there is no conversation to clear,
+          // only the second half is true, and "New chat" would name a thing
+          // this teacher does not have.
+          title={assistant ? "Start a new session" : "Back to your lessons"}
           // The pill stays 27px tall; the pseudo-element takes the touch area to
           // 47 so a thumb hits it. Same on the two buttons beside it.
           className={cn(
@@ -100,7 +104,13 @@ export function ChatHeader({
               : "border-white/10 bg-white/5 text-slate-200 hover:border-brand/40 hover:bg-white/10"
           )}
         >
-          <Plus size={13} /> <span className="hidden sm:inline short:hidden">New chat</span>
+          {/* Not BookOpen: the lessons button below is BookOpen + "Lesson",
+              and below sm both labels are hidden — the two would sit side by
+              side as the same icon meaning two different things. */}
+          {assistant ? <Plus size={13} /> : <ArrowLeft size={13} />}{" "}
+          <span className="hidden sm:inline short:hidden">
+            {assistant ? "New chat" : "My lessons"}
+          </span>
         </button>
       )}
       {showLessonsButton && (
