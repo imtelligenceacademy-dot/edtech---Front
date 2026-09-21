@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { cn, stripMarkdown } from "@/lib/utils";
-import { gradeTitle } from "@/lib/grades";
+import { gradeTitle, isKindergarten } from "@/lib/grades";
 import { userCan } from "@/lib/permissions";
 import {
   getSession,
@@ -118,16 +118,23 @@ export function Chatbot({
   const [sessionLoaded, setSessionLoaded] = useState(false);
   // The teacher experience is light-only.
   const light = true;
-  // Kindergarten runs MTiny, which the assistant has never read, so a teacher
-  // who takes only kindergarten gets the lesson launcher and no conversation.
+  // Kindergarten runs MTiny, which the assistant has never read. That holds two
+  // ways: a teacher who takes only kindergarten never sees the assistant at all,
+  // and *any* teacher looking at a kindergarten grade sees the lesson launcher
+  // and no conversation, whatever else she teaches. A mixed KG-and-Grade-1
+  // teacher keeps the assistant on her Grade 1 page and loses it here, because
+  // the question she would ask on this page is about a lesson it has not read.
   //
-  // Read as "known not to have it" rather than "not known to have it": until
-  // the session lands every teacher is treated as having the assistant, which
-  // is exactly what happened before this existed. Getting it wrong for an
-  // instant costs nothing either way — the server refuses the request on the
-  // same rule, so the composer could not have sent anything regardless.
+  // The grade comes from the route, so this half is known on first paint and the
+  // chat never appears and is then taken away. The account half is read as
+  // "known not to have it" rather than "not known to have it": until the session
+  // lands every teacher is treated as having the assistant, which is exactly
+  // what happened before this existed. Getting that wrong for an instant costs
+  // nothing — the server refuses the request on the same rules, so the composer
+  // could not have sent anything regardless.
   const assistantHidden =
-    sessionLoaded && !userCan(session, "use-ai-assistant");
+    (grade !== null && isKindergarten(grade)) ||
+    (sessionLoaded && !userCan(session, "use-ai-assistant"));
   const [fullscreenLesson, setFullscreenLesson] = useState<Lesson | null>(null);
   // ICT Fair (shown only to teachers granted access). View-only: a project
   // grid in the main area, and the picked project opens full-screen. No chat
