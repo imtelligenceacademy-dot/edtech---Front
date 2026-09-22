@@ -21,6 +21,9 @@ export const eventLabel: Record<SecurityEventType, string> = {
   "blocked-second-device": "Blocked second device",
   "password-reset": "Password reset",
   "signed-out-all": "Signed out everywhere",
+  "progress-reset": "Progress reset",
+  "lesson-file-served": "Lesson opened",
+  "lesson-file-refused": "Lesson refused",
 };
 
 const eventTone: Record<SecurityEventType, Parameters<typeof Badge>[0]["tone"]> = {
@@ -33,9 +36,20 @@ const eventTone: Record<SecurityEventType, Parameters<typeof Badge>[0]["tone"]> 
   "blocked-second-device": "danger",
   "password-reset": "warning",
   "signed-out-all": "info",
+  "progress-reset": "warning",
+  // Not a warning. This is what a teacher does every day, and colouring it as
+  // a problem would teach whoever reads this screen to ignore the colour.
+  "lesson-file-served": "info",
+  "lesson-file-refused": "danger",
 };
 
-export function SecurityLogTable({ logs }: { logs: SecurityLog[] }) {
+export function SecurityLogTable({
+  logs,
+  emptyMessage = "No security events.",
+}: {
+  logs: SecurityLog[];
+  emptyMessage?: string;
+}) {
   const [openId, setOpenId] = useState<string | null>(null);
   const muted = "text-slate-500";
 
@@ -107,7 +121,7 @@ export function SecurityLogTable({ logs }: { logs: SecurityLog[] }) {
               {logs.length === 0 && (
                 <tr>
                   <td colSpan={6} className={cn("px-4 py-6 text-center", muted)}>
-                    No security events.
+                    {emptyMessage}
                   </td>
                 </tr>
               )}

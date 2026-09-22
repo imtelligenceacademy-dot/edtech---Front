@@ -258,7 +258,21 @@ export type SecurityEventType =
   | "failed-login"
   | "account-locked"
   | "password-reset"
-  | "signed-out-all";
+  | "signed-out-all"
+  // Written since the list above was last matched to the server. A missing
+  // member is not a type error anywhere — the rows simply arrive with an
+  // event nothing has a label for, and the badge renders empty.
+  | "progress-reset"
+  | "lesson-file-served"
+  | "lesson-file-refused";
+
+// The two that are a teacher opening her lesson rather than a moment of risk.
+// The server keeps them out of the default listing for the same reason the
+// screen asks for them separately: unfiltered they are most of the rows.
+export const FILE_ACCESS_EVENTS = [
+  "lesson-file-served",
+  "lesson-file-refused",
+] as const satisfies readonly SecurityEventType[];
 
 export interface SecurityLog {
   id: string;

@@ -14,6 +14,7 @@ import type {
   Report,
   Role,
   School,
+  SecurityEventType,
   SecurityLog,
   SecurityLogDetail,
   Session,
@@ -881,8 +882,12 @@ export async function downloadReport(
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export function listSecurityLogs() {
-  return apiFetch<SecurityLog[]>("/api/security-logs");
+// `event` narrows to one kind. Without it the server leaves the file-access
+// rows out, because a teacher opening a lesson happens all day and would push
+// every sign-in off the page.
+export function listSecurityLogs(event?: SecurityEventType) {
+  const query = event ? `?event=${encodeURIComponent(event)}` : "";
+  return apiFetch<SecurityLog[]>(`/api/security-logs${query}`);
 }
 
 // One event with the context that makes it readable: is this address familiar,
