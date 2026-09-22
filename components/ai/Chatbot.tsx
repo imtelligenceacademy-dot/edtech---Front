@@ -86,6 +86,21 @@ import {
 } from "@/lib/teacher/lesson-intents";
 import type { AIMessage, FairProject, Lesson, ProgressEntry, Session } from "@/types";
 
+// What the assistant says when a lesson goes up on the left. Shared, because
+// restoring one after a refresh has to announce it exactly as opening it does:
+// the transcript is what decides whether the launcher or the conversation holds
+// the screen, so a lesson that reappears silently leaves the two panes
+// disagreeing — the lesson open on the left, and the launcher on the right
+// still offering to open it.
+function openingLine(lesson: Lesson, mobilePdf: boolean): string {
+  const detail = lesson.fileId
+    ? mobilePdf
+      ? "The lesson PDF is opening in the mobile viewer."
+      : "The lesson PDF is open on the left — ask me anything about it here."
+    : `${lesson.slides.length} slides. The deck is open on the left; ask me anything about a slide and I'll explain it here.`;
+  return `Opening "${lesson.title}" — ${gradeTitle(lesson.grade)}. ${detail}`;
+}
+
 // The route decides which grade is in play (and whether this is the ICT Fair
 // view); the component never picks one on its own, so Back and Forward move
 // through the session the way a teacher expects.
@@ -420,7 +435,21 @@ export function Chatbot({
     if ((match.accessStatus ?? "available") === "available") {
       setOpenedLesson(match);
       setOpenedSlide(1);
+      // Say so, as opening it would have. Without this the restored lesson is
+      // on screen with an empty transcript behind it, and an empty transcript
+      // hands the screen to the launcher — which then invites the teacher to
+      // open the lesson she is already looking at. Local only: `pushAssistant`
+      // writes nothing to the server, so a refresh does not add a line to the
+      // stored thread.
+      pushAssistant(openingLine(match, false), {
+        sourceRef: match.title,
+        lessonId: match.id,
+      });
     }
+    // `pushAssistant` is redeclared every render, so listing it would re-run
+    // this on each one and announce the lesson again and again. The effect is
+    // meant to fire when the lesson list resolves, and only then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessons, selectedGrade]);
 
   useEffect(() => {
@@ -473,13 +502,8 @@ export function Chatbot({
     if (mobilePdf) {
       setFullscreenLesson(lesson);
     }
-    const detail = lesson.fileId
-      ? mobilePdf
-        ? "The lesson PDF is opening in the mobile viewer."
-        : "The lesson PDF is open on the left — ask me anything about it here."
-      : `${lesson.slides.length} slides. The deck is open on the left; ask me anything about a slide and I'll explain it here.`;
     pushAssistant(
-      `Opening "${lesson.title}" — ${gradeTitle(lesson.grade)}. ${detail}`,
+      openingLine(lesson, mobilePdf),
       {
         sourceRef: lesson.title,
         // Tagged with the lesson being opened. The ref still holds the previous
