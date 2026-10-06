@@ -10,7 +10,7 @@ import {
   MonitorX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { saveLessonProgress } from "@/lib/api";
+import { saveProgressOrQueue } from "@/lib/pending-progress";
 import type { Lesson } from "@/types";
 
 // Controls for the lesson showing on the classroom screen. Everything the
@@ -48,12 +48,22 @@ export function PresentingBar({
     setSaving(true);
     setSaved(null);
     try {
-      await saveLessonProgress(
+      const outcome = await saveProgressOrQueue(
         lesson.id,
         complete
           ? { complete: true, total, section }
           : { slide: page, total, section }
       );
+      if (outcome.status === "queued") {
+        // Held until the connection is back. Presenting carries on: nothing
+        // about the lesson on the classroom screen depends on this arriving.
+        setSaved(
+          complete
+            ? "Offline — marked complete on this device. It will sync when the connection is back."
+            : `Offline — page ${page} saved on this device. It will sync when the connection is back.`
+        );
+        return;
+      }
       setSaved(complete ? "Marked complete" : `Saved — page ${page}`);
       if (complete) onCompleted();
     } catch {

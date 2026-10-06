@@ -40,12 +40,31 @@ function getStoredAccessToken(): string | null {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+// The account the stored token belongs to, read from the token's own payload.
+// Not verified here and it does not need to be: it decides only whose progress
+// saves this tab may send later, and the server checks the real token on every
+// request anyway.
+export function currentAccountId(): string | null {
+  const token = getStoredAccessToken();
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    const sub = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")))?.sub;
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
 function storeAccessToken(token?: string | null) {
   if (typeof window === "undefined" || !token) return;
   window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
 }
 
 function clearAccessToken() {
+  // Every kept PDF carries the signed-out account's address in its footer, and
+  // the next person to sign in on this tab must not be handed one.
+  clearLessonPdfCache();
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
   window.localStorage.removeItem(ROLE_KEY);
@@ -1009,9 +1028,54 @@ export function fileViewUrl(fileId: string): string {
   return `${API_BASE_URL}/api/files/${fileId}/view`;
 }
 
+// Lesson PDFs this tab has already downloaded, kept for as long as the tab is
+// open. A teacher whose connection is unreliable opens her lessons in the
+// morning and leaves the tabs open; that only works if the PDF she already has
+// is the one used again. Without this, Full screen started a second viewer
+// that downloaded the whole file again, and closing a lesson and reopening it
+// did the same — so the connection dropping took the lesson with it, even
+// though every byte of it was already on her machine.
+//
+// The promise is kept rather than the bytes, so a second viewer opened while
+// the first download is still running waits on it instead of starting another.
+// Bounded, because a long day of lessons should not grow without end.
+const lessonPdfCache = new Map<string, Promise<ArrayBuffer>>();
+const LESSON_PDF_CACHE_LIMIT = 12;
+
+export function clearLessonPdfCache(): void {
+  lessonPdfCache.clear();
+}
+
 // Fetches the raw PDF bytes (with the auth cookie + one refresh retry) so the
 // in-app PDF.js viewer can render them — no browser download UI involved.
-export async function fetchLessonPdf(
+export async function fetchLessonPdf(fileId: string): Promise<ArrayBuffer> {
+  let pending = lessonPdfCache.get(fileId);
+  if (pending) {
+    // Most recently used last, so the limit lets go of the oldest lesson.
+    lessonPdfCache.delete(fileId);
+    lessonPdfCache.set(fileId, pending);
+  } else {
+    const download = downloadLessonPdfBytes(fileId);
+    pending = download;
+    lessonPdfCache.set(fileId, download);
+    // A failure is not kept: the next attempt, once the connection is back,
+    // has to actually try again.
+    download.catch(() => {
+      if (lessonPdfCache.get(fileId) === download) lessonPdfCache.delete(fileId);
+    });
+    if (lessonPdfCache.size > LESSON_PDF_CACHE_LIMIT) {
+      const oldest = lessonPdfCache.keys().next().value;
+      if (oldest !== undefined) lessonPdfCache.delete(oldest);
+    }
+  }
+  const bytes = await pending;
+  // A copy every time. PDF.js takes the buffer it is given — it is transferred
+  // to its worker and left empty here — so a second viewer handed the same one
+  // would be opening a zero-byte file.
+  return bytes.slice(0);
+}
+
+async function downloadLessonPdfBytes(
   fileId: string,
   retried = false
 ): Promise<ArrayBuffer> {
@@ -1022,17 +1086,25 @@ export async function fetchLessonPdf(
       headers: withAuthHeaders(),
     });
   } catch {
-    // Not an HTTP error — the browser never got a response at all. `fetch`
-    // rejects with a bare "Failed to fetch", which tells a teacher nothing, and
-    // the cause we have actually seen is a download manager claiming the
-    // request. Name it, because the fix is hers to make.
+    // Not an HTTP error — the browser never got a response at all, and `fetch`
+    // says only "Failed to fetch". Two causes are actually seen: no connection,
+    // which is most of them, and a download manager claiming the request. The
+    // browser is only certain about the first when it is fully offline, so that
+    // case gets its own sentence; otherwise both are named.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new Error(
+        "You're offline, and this lesson hasn't been loaded in this tab yet. " +
+          "It will open once the connection is back."
+      );
+    }
     throw new Error(
-      "Could not load the lesson PDF. If a download manager such as IDM is " +
-        "running, disable its extension for this site and reload the page."
+      "Could not reach the server to load the lesson PDF. Check the connection " +
+        "and try again. If the connection is fine and a download manager such as " +
+        "IDM is running, disable its extension for this site."
     );
   }
   if (res.status === 401 && !retried) {
-    if (await refreshAccessToken()) return fetchLessonPdf(fileId, true);
+    if (await refreshAccessToken()) return downloadLessonPdfBytes(fileId, true);
   }
   if (!res.ok) {
     let detail = "Could not load the lesson PDF.";

@@ -26,8 +26,8 @@ import {
   listMyAccessRequests,
   listProgress,
   requestLessonAccess,
-  saveLessonProgress,
 } from "@/lib/api";
+import { PROGRESS_SYNCED_EVENT, saveProgressOrQueue } from "@/lib/pending-progress";
 import { GradeGate } from "@/components/teacher/GradeGate";
 import { ClassGate } from "@/components/teacher/ClassGate";
 import { WelcomeScreen } from "@/components/teacher/WelcomeScreen";
@@ -228,6 +228,17 @@ export function Chatbot({
     refreshLessons,
     requestAccess,
   } = useTeacherLessons(session, section);
+
+  // A save held while offline has reached the server. A completion among them
+  // may have unlocked the next lesson, so the list is pulled again. Through a
+  // ref so the listener is added once rather than on every render.
+  const refreshLessonsRef = useRef(refreshLessons);
+  refreshLessonsRef.current = refreshLessons;
+  useEffect(() => {
+    const onSynced = () => refreshLessonsRef.current();
+    window.addEventListener(PROGRESS_SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(PROGRESS_SYNCED_EVENT, onSynced);
+  }, []);
 
   // How the lesson viewer and the assistant share the screen.
   // An open lesson takes the whole screen either because the teacher folded the
@@ -525,7 +536,14 @@ export function Chatbot({
     }
     const lesson = activeLesson;
     try {
-      await saveLessonProgress(lesson.id, { complete: true, section });
+      const outcome = await saveProgressOrQueue(lesson.id, { complete: true, section });
+      if (outcome.status === "queued") {
+        pushAssistant(
+          `You're offline, so I've kept this on the device: "${lesson.title}" will be marked complete as soon as the connection is back. You can keep teaching from the open lesson in the meantime.`,
+          { sourceRef: lesson.title }
+        );
+        return;
+      }
       refreshLessons();
       pushAssistant(
         `Nice work — I've marked "${lesson.title}" as complete. Your next lesson unlocks after the waiting period; say "open the next lesson" and I'll open it once it's available.`,

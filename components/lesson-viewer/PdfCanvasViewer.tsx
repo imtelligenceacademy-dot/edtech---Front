@@ -11,7 +11,8 @@ import {
   ArrowLeft,
   ExternalLink,
 } from "lucide-react";
-import { fetchLessonPdf, saveLessonProgress } from "@/lib/api";
+import { fetchLessonPdf } from "@/lib/api";
+import { saveProgressOrQueue } from "@/lib/pending-progress";
 import { cn } from "@/lib/utils";
 import { SMALL_SCREEN_QUERY } from "@/lib/teacher/lesson-order";
 import { useBlockSaveShortcuts, useLessonPdf } from "./useLessonPdf";
@@ -319,12 +320,25 @@ export function PdfCanvasViewer({
     setSaving(true);
     setSaved(null);
     try {
-      const p = await saveLessonProgress(
+      const outcome = await saveProgressOrQueue(
         lessonId,
         complete
           ? { complete: true, total, section }
           : { slide: current, total, section }
       );
+      if (outcome.status === "queued") {
+        // Held, not done. `onCompleted` is not called: the next lesson unlocks
+        // when the server hears of this, and saying it had would send her
+        // looking for a lesson that is still locked. The lesson list refreshes
+        // itself once the save gets through.
+        setSaved(
+          complete
+            ? "Offline — marked complete on this device. It will sync when the connection is back."
+            : `Offline — slide ${current} saved on this device. It will sync when the connection is back.`
+        );
+        return;
+      }
+      const p = outcome.entry;
       setSaved(
         complete
           ? "Marked complete — 100%"
